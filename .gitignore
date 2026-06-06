@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 generate_icon.py
+InstAnalyse/

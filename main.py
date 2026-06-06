@@ -238,17 +238,29 @@ class InstagramAnalyticsApp:
         self._keepalive_id = None
         self._logged_in_user: str | None = None
         self._build_ui()
-        self._show_disclaimer()
 
     # ── Disclaimer ───────────────────────────────────────────────────────
 
-    def _show_disclaimer(self):
-        flag_file = os.path.join(USERDATA_DIR, ".disclaimer_accepted")
-        if os.path.exists(flag_file):
-            return
+    def _show_disclaimer(self, username: str = None) -> bool:
+        """Show disclaimer for *username*. Returns True if accepted.
 
+        Each account gets its own acceptance flag so new accounts
+        always see the warning before first use.
+        """
+        if username:
+            safe = self._safe_username(username)
+            flag_file = os.path.join(USERDATA_DIR, safe, ".disclaimer_accepted")
+            os.makedirs(os.path.dirname(flag_file), exist_ok=True)
+        else:
+            flag_file = os.path.join(USERDATA_DIR, ".disclaimer_accepted")
+
+        if os.path.exists(flag_file):
+            return True
+
+        acct = f" for @{username}" if username else ""
         msg = (
             "DISCLAIMER — PLEASE READ\n\n"
+            f"Before using this application{acct}, please be aware:\n\n"
             "This application uses instagrapi, an unofficial, "
             "third-party library that interacts with Instagram's "
             "private API.\n\n"
@@ -270,8 +282,8 @@ class InstagramAnalyticsApp:
                     f.write("accepted")
             except OSError:
                 pass
-        else:
-            self.root.destroy()
+            return True
+        return False
 
     # ── DB helpers ───────────────────────────────────────────────────────
 
@@ -2031,6 +2043,9 @@ class InstagramAnalyticsApp:
             )
             return
 
+        if not self._show_disclaimer(username):
+            return
+
         self._on_save_account()
         self._set_buttons_state("disabled")
         self._show_progress("Logging in...")
@@ -2082,6 +2097,9 @@ class InstagramAnalyticsApp:
                 "Missing credentials",
                 "Please enter both username and password.",
             )
+            return
+
+        if not self._show_disclaimer(username):
             return
 
         self._on_save_account()
