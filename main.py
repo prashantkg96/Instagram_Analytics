@@ -5,6 +5,7 @@ Scrapes follower/following data, stores in SQLite, and shows analytics in a desk
 
 import json
 import os
+import random
 import shutil
 import threading
 import time
@@ -27,11 +28,13 @@ from db import (
     store_media_items, store_media_interactions, store_story_viewers,
     get_session_media_items, get_session_media_interactions,
     get_session_story_viewers, has_engagement_data,
+    get_last_engagement_time,
 )
 from scraper import (
     scrape_followers_and_following, unfollow_users, get_last_client,
+    get_last_client_username, check_session,
     scrape_engagement, IGRateLimitError, IGTimeoutError,
-    scrape_post_for_giveaway, login_only,
+    scrape_post_for_giveaway, login_only, session_keepalive,
 )
 from analytics import (
     generate_full_report, get_timeline, compute_account_insights,
@@ -47,6 +50,10 @@ CREDS_PATH = os.path.join(USERDATA_DIR, "saved_accounts.json")
 PHOTO_DIR = os.path.join(USERDATA_DIR, "profile_photos")
 
 os.makedirs(USERDATA_DIR, exist_ok=True)
+
+
+class _Cancelled(Exception):
+    """Raised inside worker threads when the user clicks Cancel."""
 
 
 def _migrate_legacy_paths():
@@ -165,11 +172,12 @@ class _ToolTip:
 
 # ── Profile photo helpers ────────────────────────────────────────────────────
 
-def _download_photo(url: str, username: str, size: int = 32) -> str | None:
+def _download_photo(url: str, username: str, size: int = 32,
+                    photo_dir: str = PHOTO_DIR) -> str | None:
     if not url or not HAS_PIL:
         return None
-    os.makedirs(PHOTO_DIR, exist_ok=True)
-    path = os.path.join(PHOTO_DIR, f"{username}_{size}.png")
+    os.makedirs(photo_dir, exist_ok=True)
+    path = os.path.join(photo_dir, f"{username}_{size}.png")
     if os.path.exists(path):
         return path
     try:
@@ -226,6 +234,9 @@ class InstagramAnalyticsApp:
         self._last_report = None
         self._last_username = ""
         self._last_eng_report = None
+        self._cancel_event = threading.Event()
+        self._keepalive_id = None
+        self._logged_in_user: str | None = None
         self._build_ui()
         self._show_disclaimer()
 
@@ -264,9 +275,17 @@ class InstagramAnalyticsApp:
 
     # ── DB helpers ───────────────────────────────────────────────────────
 
+    def _safe_username(self, username: str = None) -> str:
+        u = username or self.username_var.get().strip() or "default"
+        return "".join(c if c.isalnum() or c in ("_", "-", ".") else "_" for c in u)
+
     def _get_db_path(self) -> str:
         username = self.username_var.get().strip()
         return get_db_path_for_profile(username or "default")
+
+    def _get_photo_dir(self, username: str = None) -> str:
+        safe = self._safe_username(username)
+        return os.path.join(USERDATA_DIR, safe, "profile_photos")
 
     def _ensure_db(self, db_path: str = None):
         init_db(db_path or self._get_db_path())
@@ -304,11 +323,101 @@ class InstagramAnalyticsApp:
             self.password_var.set("")
             self.save_pw_var.set(False)
         self._update_own_photo(username)
+        # Auto-load last report if data exists for this user
+        self._auto_load_last_report(username)
+        # Check if this user already has an active session
+        self._check_login_state(username)
+
+    def _check_login_state(self, username: str):
+        """Grey out the login button if this user already has a live session."""
+        # Case 1: we already verified this user in-memory
+        if self._logged_in_user == username:
+            self.btn_login.configure(
+                state="disabled", text="\u2705 Already logged in",
+            )
+            return
+        # Reset login button for a different user
+        self._logged_in_user = None
+        # Case 2: session file exists → show loading and verify in background
+        pw = self.password_var.get().strip()
+        if not pw:
+            t = THEMES[self.current_theme]
+            self.btn_login.configure(
+                state="normal",
+                text="\U0001F511 Login",
+                bg=t["BTN_BG"], fg=t["BTN_FG"],
+            )
+            return
+        # Disable button and show a spinner while checking
+        self.btn_login.configure(
+            state="disabled", text="\u23F3 Checking...",
+        )
+
+        def _bg_check():
+            alive = check_session(username, pw)
+            if alive:
+                self.root.after(0, self._mark_logged_in, username)
+            else:
+                # Session expired or missing — enable login button
+                def _enable():
+                    # Guard: user may have switched to another account
+                    if self.username_var.get().strip() != username:
+                        return
+                    t = THEMES[self.current_theme]
+                    self.btn_login.configure(
+                        state="normal",
+                        text="\U0001F511 Login",
+                        bg=t["BTN_BG"], fg=t["BTN_FG"],
+                    )
+                self.root.after(0, _enable)
+
+        threading.Thread(target=_bg_check, daemon=True).start()
+
+    def _mark_logged_in(self, username: str):
+        """Update UI to reflect that *username* has an active session."""
+        self._logged_in_user = username
+        # Only update if the user hasn't switched to a different account
+        if self.username_var.get().strip() == username:
+            self.btn_login.configure(
+                state="disabled", text="\u2705 Already logged in",
+            )
+            self._set_status(f"Session active for @{username}")
+            self._start_keepalive()
+
+    def _auto_load_last_report(self, username: str):
+        """Load and display the most recent report for *username* if available."""
+        if not username:
+            return
+        db_path = self._get_db_path()
+        if not os.path.exists(db_path):
+            return
+        self._ensure_db(db_path)
+        sessions = get_all_sessions(username, db_path=db_path)
+        if not sessions:
+            return
+        latest = sessions[-1]
+        current_followers = get_session_followers(
+            latest["id"], db_path=db_path,
+        )
+        current_following = get_session_following(
+            latest["id"], db_path=db_path,
+        )
+        report = generate_full_report(
+            username=username, current_session_id=latest["id"],
+            current_followers=current_followers,
+            current_following=current_following, db_path=db_path,
+        )
+        self._display_report(report, username)
+        self._set_status(
+            f"Loaded report from session #{latest['id']} "
+            f"({latest['scraped_at'][:19]})",
+        )
 
     def _update_own_photo(self, username: str):
         if not HAS_PIL:
             return
-        photo_path = os.path.join(PHOTO_DIR, f"{username}_48.png")
+        photo_dir = self._get_photo_dir(username)
+        photo_path = os.path.join(photo_dir, f"{username}_48.png")
         img = _load_photo_tk(photo_path)
         if img:
             self._own_photo_ref = img
@@ -465,7 +574,7 @@ class InstagramAnalyticsApp:
         )
         self.lbl_media_n.pack(side="left", padx=(8, 2))
 
-        self.media_count_var = tk.StringVar(value="30")
+        self.media_count_var = tk.StringVar(value="10")
         self.entry_media_n = tk.Entry(
             self.btn_frame, textvariable=self.media_count_var,
             width=4, bg=t["ENTRY_BG"], fg=t["FG"],
@@ -506,18 +615,6 @@ class InstagramAnalyticsApp:
                  "Delete all scraped data & photos for current profile")
         _hover_bind(self.btn_purge, "#7f1d1d", "#991b1b")
 
-        # ── Row 3: Secondary actions ──
-        self.btn_frame2 = tk.Frame(self.root, bg=t["BG"], padx=20, pady=2)
-        self.btn_frame2.pack(fill="x")
-
-        self.btn_report = tk.Button(
-            self.btn_frame2, text="Last Report", command=self._on_report,
-            bg=t["BTN_SEC"], fg=t["FG"], relief="flat",
-            font=("Segoe UI", 10), padx=14, pady=4, cursor="hand2", bd=0,
-        )
-        self.btn_report.pack(side="left", padx=(0, 3))
-        _hover_bind(self.btn_report, t["BTN_SEC"], t["BTN_SEC_HVR"])
-
         # ── Progress bar (hidden until an operation starts) ──
         self.progress_frame = tk.Frame(self.root, bg=t["BG"], padx=20)
 
@@ -527,10 +624,22 @@ class InstagramAnalyticsApp:
         )
         self.progress_label.pack(fill="x", pady=(4, 2))
 
+        bar_row = tk.Frame(self.progress_frame, bg=t["BG"])
+        bar_row.pack(fill="x", pady=(0, 6))
+
         self.progress_bar = ttk.Progressbar(
-            self.progress_frame, mode="indeterminate", length=400,
+            bar_row, mode="indeterminate", length=400,
         )
-        self.progress_bar.pack(fill="x", pady=(0, 6))
+        self.progress_bar.pack(side="left", fill="x", expand=True)
+
+        self.btn_cancel = tk.Button(
+            bar_row, text="✖ Cancel", command=self._on_cancel,
+            bg="#7f1d1d", fg="#fca5a5", activebackground="#991b1b",
+            relief="flat", font=("Segoe UI", 9, "bold"),
+            padx=10, pady=1, cursor="hand2", bd=0,
+        )
+        self.btn_cancel.pack(side="right", padx=(8, 0))
+        _hover_bind(self.btn_cancel, "#7f1d1d", "#991b1b")
 
         # ── Separator ──
         self.sep = ttk.Separator(self.root, orient="horizontal")
@@ -546,8 +655,13 @@ class InstagramAnalyticsApp:
         self.status_bar.pack(fill="x")
 
         # ── Notebook ──
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=(6, 10))
+        self._nb_wrapper = tk.Frame(
+            self.root, bg=t["BORDER"], bd=0,
+            highlightbackground=t["BORDER"], highlightthickness=1,
+        )
+        self._nb_wrapper.pack(fill="both", expand=True, padx=10, pady=(6, 10))
+        self.notebook = ttk.Notebook(self._nb_wrapper)
+        self.notebook.pack(fill="both", expand=True)
 
         self._apply_ttk_style()
 
@@ -583,12 +697,24 @@ class InstagramAnalyticsApp:
 
         self.log_frame = tk.Frame(self.notebook, bg=t["BG"])
         self.notebook.add(self.log_frame, text="  Log  ")
+
+        log_toolbar = tk.Frame(self.log_frame, bg=t["BG"])
+        log_toolbar.pack(fill="x", padx=10, pady=(8, 0))
+        self.btn_clear_log = tk.Button(
+            log_toolbar, text="\U0001F5D1 Clear Log",
+            command=self._on_clear_log,
+            bg=t["BTN_SEC"], fg=t["FG"], relief="flat",
+            font=("Segoe UI", 9), padx=10, pady=2, cursor="hand2", bd=0,
+        )
+        self.btn_clear_log.pack(side="right")
+        _hover_bind(self.btn_clear_log, t["BTN_SEC"], t["BTN_SEC_HVR"])
+
         self.log_text = tk.Text(
             self.log_frame, bg=t["BG_CARD"], fg=t["FG"],
             font=("Cascadia Code", 10), relief="flat", wrap="word",
             state="disabled", insertbackground=t["FG"], bd=0,
         )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.log_text.pack(fill="both", expand=True, padx=10, pady=(6, 10))
 
         self._apply_tab_colors()
         self._build_winner_tab()
@@ -643,6 +769,18 @@ class InstagramAnalyticsApp:
             background=t["PROGRESS_FG"],
             troughcolor=t["PROGRESS_BG"],
             borderwidth=0, thickness=4,
+        )
+
+        style.configure(
+            "Vertical.TScrollbar",
+            background=t["BG_CARD2"],
+            troughcolor=t["BG"],
+            borderwidth=0, relief="flat",
+            arrowcolor=t["FG_DIM"],
+        )
+        style.map(
+            "Vertical.TScrollbar",
+            background=[("active", t["FG_DIM"])],
         )
 
     def _apply_tab_colors(self):
@@ -765,9 +903,14 @@ class InstagramAnalyticsApp:
         # Frames
         self.top_frame.configure(bg=t["BG"])
         self.btn_frame.configure(bg=t["BG"])
-        self.btn_frame2.configure(bg=t["BG"])
+
+        self._nb_wrapper.configure(bg=t["BORDER"],
+                                   highlightbackground=t["BORDER"])
         self.progress_frame.configure(bg=t["BG"])
         self.progress_label.configure(bg=t["BG"], fg=t["FG_DIM"])
+        for child in self.progress_frame.winfo_children():
+            if isinstance(child, tk.Frame):
+                child.configure(bg=t["BG"])
 
         # Title + photo
         self.lbl_title.configure(bg=t["BG"], fg=t["ACCENT"])
@@ -796,8 +939,7 @@ class InstagramAnalyticsApp:
         # Buttons
         self.btn_del_acct.configure(bg=t["BTN_SEC"], fg=t["RED"])
         _hover_bind(self.btn_del_acct, t["BTN_SEC"], t["BTN_SEC_HVR"])
-        self.btn_report.configure(bg=t["BTN_SEC"], fg=t["FG"])
-        _hover_bind(self.btn_report, t["BTN_SEC"], t["BTN_SEC_HVR"])
+
         self.btn_theme.configure(
             bg=t["BTN_SEC"], fg=t["FG"],
             text="\u2600" if self.current_theme == "dark" else "\u263e",
@@ -809,6 +951,8 @@ class InstagramAnalyticsApp:
         self.log_text.configure(
             bg=t["BG_CARD"], fg=t["FG"], insertbackground=t["FG"],
         )
+        self.btn_clear_log.configure(bg=t["BTN_SEC"], fg=t["FG"])
+        _hover_bind(self.btn_clear_log, t["BTN_SEC"], t["BTN_SEC_HVR"])
 
         # Tab frames
         for frame in (
@@ -830,14 +974,27 @@ class InstagramAnalyticsApp:
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
+    def _on_clear_log(self):
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+
     def _set_status(self, msg: str):
         self.status_var.set(msg)
 
     def _set_buttons_state(self, state: str):
-        for btn in (self.btn_scrape, self.btn_report,
+        for btn in (self.btn_scrape,
                     self.btn_engagement, self.btn_purge, self.btn_purge_creds,
                     self.btn_login):
             btn.configure(state=state)
+        # Keep login button greyed out if user is already logged in
+        if state == "normal" and self._logged_in_user:
+            current = self.username_var.get().strip()
+            if current == self._logged_in_user:
+                self.btn_login.configure(
+                    state="disabled",
+                    text="\u2705 Already logged in",
+                )
 
     # ------ Cooldown timer for rate-limited buttons ------
 
@@ -869,9 +1026,39 @@ class InstagramAnalyticsApp:
         for w in frame.winfo_children():
             w.destroy()
 
+    # ── Session keep-alive ───────────────────────────────────────────────
+
+    def _start_keepalive(self):
+        """Start periodic background pings to keep the Instagram session warm."""
+        self._stop_keepalive()
+
+        def _ping():
+            interval_ms = int(random.uniform(5, 12) * 60 * 1000)  # 5-12 min
+            def _do():
+                threading.Thread(target=self._keepalive_tick, daemon=True).start()
+                self._keepalive_id = self.root.after(interval_ms, _ping)
+            self._keepalive_id = self.root.after(interval_ms, _do)
+
+        _ping()
+        self._log("Session keep-alive started (pings every 5-12 min).")
+
+    def _keepalive_tick(self):
+        ok = session_keepalive(
+            log=lambda msg: self.root.after(0, self._log, msg),
+        )
+        if not ok:
+            self.root.after(0, self._stop_keepalive)
+
+    def _stop_keepalive(self):
+        if self._keepalive_id is not None:
+            self.root.after_cancel(self._keepalive_id)
+            self._keepalive_id = None
+
     def _show_progress(self, text: str = "Working..."):
+        self._cancel_event.clear()
         self.progress_label.configure(text=text)
-        self.progress_frame.pack(fill="x", after=self.btn_frame2)
+        self.btn_cancel.configure(state="normal", text="\u2716 Cancel")
+        self.progress_frame.pack(fill="x", after=self.btn_frame)
         self.progress_bar.start(12)
 
     def _update_progress_text(self, text: str):
@@ -881,6 +1068,12 @@ class InstagramAnalyticsApp:
         self.progress_bar.stop()
         self.progress_frame.pack_forget()
 
+    def _on_cancel(self):
+        self._cancel_event.set()
+        self.btn_cancel.configure(state="disabled", text="Cancelling...")
+        self._update_progress_text("Cancelling...")
+        self._log("Cancel requested — waiting for current API call to finish...")
+
     @staticmethod
     def _format_elapsed(seconds: float) -> str:
         """Format elapsed seconds as human-readable string."""
@@ -888,6 +1081,124 @@ class InstagramAnalyticsApp:
         if m:
             return f"{m}m {s}s"
         return f"{s}s"
+
+    # ── Sortable / filterable table helpers ────────────────────────────
+
+    def _make_sortable(self, tree, cols):
+        """Bind heading clicks to sort the treeview by that column."""
+        sort_state = {}  # col -> bool (True = ascending)
+
+        def _sort(col):
+            ascending = not sort_state.get(col, False)
+            sort_state[col] = ascending
+            col_idx = cols.index(col)
+
+            items = [(tree.set(iid, col), iid) for iid in tree.get_children()]
+
+            # Try numeric sort, fall back to string
+            def sort_key(pair):
+                val = pair[0]
+                # strip leading @ and % suffix for comparison
+                cleaned = val.lstrip("@").rstrip("%").replace(",", "")
+                # Handle dash / em-dash as not-sortable (put at end)
+                if cleaned in ("—", "-", ""):
+                    return (1, 0, "")
+                try:
+                    return (0, float(cleaned), "")
+                except ValueError:
+                    return (0, 0, val.lower())
+
+            items.sort(key=sort_key, reverse=not ascending)
+            for idx, (_, iid) in enumerate(items):
+                tree.move(iid, "", idx)
+
+            # Update heading arrows
+            for c in cols:
+                label = tree.heading(c, "text").rstrip(" ↑↓")
+                tree.heading(c, text=label)
+            label = tree.heading(col, "text").rstrip(" ↑↓")
+            arrow = " ↑" if ascending else " ↓"
+            tree.heading(col, text=label + arrow)
+
+            # Reapply stripe tags
+            for idx, iid in enumerate(tree.get_children()):
+                tags = ("stripe",) if idx % 2 == 1 else ()
+                tree.item(iid, tags=tags)
+
+        for col in cols:
+            tree.heading(col, command=lambda c=col: _sort(c))
+
+    def _add_filter_bar(self, parent, tree, cols, filter_cols=None):
+        """Add a filter entry above *parent*. Filters rows matching text
+        in any of *filter_cols* (defaults to all columns).
+
+        Returns the filter frame so callers can manage layout.
+        """
+        t = self.t
+        filter_cols = filter_cols or list(cols)
+
+        bar = tk.Frame(parent, bg=t["BG"])
+
+        tk.Label(
+            bar, text="\U0001F50D", bg=t["BG"], fg=t["FG_DIM"],
+            font=("Segoe UI", 10),
+        ).pack(side="left", padx=(0, 4))
+
+        filter_var = tk.StringVar()
+        entry = tk.Entry(
+            bar, textvariable=filter_var, width=28,
+            bg=t["ENTRY_BG"], fg=t["FG"], insertbackground=t["FG"],
+            relief="flat", font=("Segoe UI", 10), bd=0,
+        )
+        entry.pack(side="left", ipady=3, padx=(0, 6))
+
+        # Store original items so we can restore them
+        _original_data = []
+
+        def _snapshot():
+            if _original_data:
+                return
+            for iid in tree.get_children():
+                _original_data.append({
+                    "iid": iid,
+                    "values": tree.item(iid, "values"),
+                    "image": tree.item(iid, "image"),
+                    "tags": tree.item(iid, "tags"),
+                })
+
+        def _apply_filter(*_args):
+            _snapshot()
+            query = filter_var.get().strip().lower()
+            tree.delete(*tree.get_children())
+            for idx, item in enumerate(_original_data):
+                if query:
+                    match = any(
+                        query in str(item["values"][cols.index(c)]).lower()
+                        for c in filter_cols
+                        if cols.index(c) < len(item["values"])
+                    )
+                    if not match:
+                        continue
+                tags = ("stripe",) if idx % 2 == 1 else ()
+                kw = {}
+                if item["image"]:
+                    kw["image"] = item["image"]
+                tree.insert(
+                    "", "end", iid=item["iid"],
+                    values=item["values"], tags=tags, **kw,
+                )
+
+        filter_var.trace_add("write", _apply_filter)
+
+        btn_clear = tk.Button(
+            bar, text="Clear", command=lambda: filter_var.set(""),
+            bg=t["BTN_SEC"], fg=t["FG"], relief="flat",
+            font=("Segoe UI", 9), padx=8, pady=1, cursor="hand2", bd=0,
+        )
+        btn_clear.pack(side="left")
+        _hover_bind(btn_clear, t["BTN_SEC"], t["BTN_SEC_HVR"])
+
+        return bar
 
     # ── Actionable user table (with unfollow / browser / select) ────────
 
@@ -981,10 +1292,11 @@ class InstagramAnalyticsApp:
 
         tree.tag_configure("stripe", background=t["STRIPE"])
 
+        photo_dir = self._get_photo_dir()
         for i, u in enumerate(users, 1):
             tags = ("stripe",) if i % 2 == 0 else ()
             photo_path = (
-                os.path.join(PHOTO_DIR, f"{u['username']}_32.png") if HAS_PIL else None
+                os.path.join(photo_dir, f"{u['username']}_32.png") if HAS_PIL else None
             )
             img = (
                 _load_photo_tk(photo_path)
@@ -1005,6 +1317,11 @@ class InstagramAnalyticsApp:
         tree.configure(yscrollcommand=scrollbar.set)
         tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        self._make_sortable(tree, cols)
+        self._add_filter_bar(
+            parent, tree, cols, filter_cols=["username", "full_name"],
+        ).pack(fill="x", padx=20, pady=(0, 0), before=table_frame)
 
         self._action_tables[key]["tree"] = tree
 
@@ -1158,10 +1475,11 @@ class InstagramAnalyticsApp:
 
         tree.tag_configure("stripe", background=t["STRIPE"])
 
+        photo_dir = self._get_photo_dir()
         for i, u in enumerate(users, 1):
             tags = ("stripe",) if i % 2 == 0 else ()
             photo_path = (
-                os.path.join(PHOTO_DIR, f"{u['username']}_32.png") if HAS_PIL else None
+                os.path.join(photo_dir, f"{u['username']}_32.png") if HAS_PIL else None
             )
             img = (
                 _load_photo_tk(photo_path)
@@ -1182,6 +1500,11 @@ class InstagramAnalyticsApp:
         tree.configure(yscrollcommand=scrollbar.set)
         tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        self._make_sortable(tree, cols)
+        self._add_filter_bar(
+            parent, tree, cols, filter_cols=["username", "full_name"],
+        ).pack(fill="x", padx=20, pady=(0, 0), before=table_frame)
 
     # ── Summary tab ──────────────────────────────────────────────────────
 
@@ -1590,6 +1913,8 @@ class InstagramAnalyticsApp:
         tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        self._make_sortable(tree, cols)
+
     # ── Display report ───────────────────────────────────────────────────
 
     def _display_report(self, report, username=""):
@@ -1720,21 +2045,23 @@ class InstagramAnalyticsApp:
                         0, self._update_progress_text, msg[:60],
                     )
 
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
                 login_only(
                     username, password, log=log_to_ui,
                     twofa_callback=self._ask_2fa_code,
                 )
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
                 self.root.after(
                     0, self._log, "Session established successfully.",
                 )
                 self.root.after(
-                    0, self._set_status,
-                    f"Logged in as @{username}",
+                    0, self._mark_logged_in, username,
                 )
-                self.root.after(
-                    0, lambda: self.btn_login.configure(
-                        text="\u2705 Logged in"),
-                )
+            except _Cancelled:
+                self.root.after(0, self._log, "Login cancelled.")
+                self.root.after(0, self._set_status, "Cancelled.")
             except Exception as e:
                 self.root.after(0, self._log, f"Login failed: {e}")
                 self.root.after(
@@ -1762,7 +2089,10 @@ class InstagramAnalyticsApp:
         self._ensure_db(db_path)
 
         self._set_buttons_state("disabled")
-        self._show_progress("Logging in...")
+        if self._logged_in_user == username:
+            self._show_progress("Scraping data...")
+        else:
+            self._show_progress("Logging in...")
         self._set_status(f"Scraping @{username}...")
         self._log(f"Starting follower/following scan for @{username}...")
         self.notebook.select(self.log_frame)
@@ -1771,6 +2101,8 @@ class InstagramAnalyticsApp:
         def _worker():
             try:
                 def log_to_ui(msg):
+                    if self._cancel_event.is_set():
+                        raise _Cancelled()
                     self.root.after(0, self._log, msg)
                     lower = msg.lower()
                     if "follower" in lower and "fetching" in lower:
@@ -1789,20 +2121,36 @@ class InstagramAnalyticsApp:
                             "Logged in. Scraping data...",
                         )
 
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
+                t_step = time.time()
+                # Reuse existing client if already logged in for this user
+                existing_cl = None
+                if (self._logged_in_user == username
+                        and get_last_client() is not None
+                        and get_last_client_username() == username):
+                    existing_cl = get_last_client()
                 data = scrape_followers_and_following(
                     username, password, log=log_to_ui,
                     twofa_callback=self._ask_2fa_code,
+                    client=existing_cl,
                 )
+                scrape_time = self._format_elapsed(time.time() - t_step)
+
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
 
                 self.root.after(
                     0, self._log,
                     f"Scraped {data['follower_count']} followers and "
-                    f"{data['following_count']} following.",
+                    f"{data['following_count']} following. "
+                    f"({scrape_time})",
                 )
 
                 self.root.after(
                     0, self._update_progress_text, "Saving to database...",
                 )
+                t_step = time.time()
                 session_id = create_session(
                     username, data["follower_count"],
                     data["following_count"], db_path=db_path,
@@ -1813,10 +2161,15 @@ class InstagramAnalyticsApp:
                 store_following(
                     session_id, data["following"], db_path=db_path,
                 )
+                db_time = self._format_elapsed(time.time() - t_step)
                 self.root.after(
                     0, self._log,
-                    f"Saved to database (session #{session_id}).",
+                    f"Saved to database (session #{session_id}). "
+                    f"({db_time})",
                 )
+
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
 
                 if HAS_PIL:
                     self.root.after(
@@ -1826,25 +2179,37 @@ class InstagramAnalyticsApp:
                     self.root.after(
                         0, self._log, "Downloading profile photos...",
                     )
+                    t_step = time.time()
                     own_pic = data.get("profile_pic_url", "")
+                    photo_dir = self._get_photo_dir(username)
                     if own_pic:
-                        _download_photo(own_pic, username, size=48)
+                        _download_photo(own_pic, username, size=48,
+                                        photo_dir=photo_dir)
                     all_users = data["followers"] + data["following"]
                     seen = set()
                     for u in all_users:
+                        if self._cancel_event.is_set():
+                            raise _Cancelled()
                         if u["username"] not in seen:
                             seen.add(u["username"])
                             pic = u.get("profile_pic_url", "")
                             if pic:
-                                _download_photo(pic, u["username"], size=32)
+                                _download_photo(pic, u["username"], size=32,
+                                                photo_dir=photo_dir)
+                    photo_time = self._format_elapsed(time.time() - t_step)
                     self.root.after(
                         0, self._log,
-                        f"Downloaded {len(seen)} profile photos.",
+                        f"Downloaded {len(seen)} profile photos. "
+                        f"({photo_time})",
                     )
+
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
 
                 self.root.after(
                     0, self._update_progress_text, "Generating report...",
                 )
+                t_step = time.time()
                 report = generate_full_report(
                     username=username,
                     current_session_id=session_id,
@@ -1852,10 +2217,15 @@ class InstagramAnalyticsApp:
                     current_following=data["following"],
                     db_path=db_path,
                 )
+                report_time = self._format_elapsed(time.time() - t_step)
 
                 elapsed = time.time() - t0
                 elapsed_str = self._format_elapsed(elapsed)
 
+                self.root.after(
+                    0, self._log,
+                    f"Report generated. ({report_time})",
+                )
                 self.root.after(
                     0, self._display_report, report, username,
                 )
@@ -1868,7 +2238,14 @@ class InstagramAnalyticsApp:
                     0, self._log,
                     f"Done. Total time: {elapsed_str}.",
                 )
+                self.root.after(0, self._start_keepalive)
+                self.root.after(
+                    0, self._mark_logged_in, username,
+                )
 
+            except _Cancelled:
+                self.root.after(0, self._log, "Scan cancelled.")
+                self.root.after(0, self._set_status, "Scan cancelled.")
             except IGRateLimitError as e:
                 cd = e.cooldown
                 self.root.after(0, self._log,
@@ -1989,14 +2366,40 @@ class InstagramAnalyticsApp:
             )
             return
 
+        password = self.password_var.get().strip()
+
         cl = get_last_client()
-        if cl is None:
-            messagebox.showwarning(
-                "No Session",
-                "Run \"Scan Followers & Following\" first to establish "
-                "a session, then click Analyze Engagement.",
-            )
-            return
+        cl_user = get_last_client_username()
+        # If no active session or it belongs to a different user, try to
+        # establish one automatically instead of just showing an error.
+        if cl is None or cl_user != username:
+            if not password:
+                messagebox.showwarning(
+                    "No Session",
+                    "No active session for this account.\n"
+                    "Enter your password and try again, or run "
+                    "\"Scan Followers & Following\" first.",
+                )
+                return
+            # Quick background session restore
+            self._set_status("Checking session...")
+            alive = check_session(username, password)
+            if alive:
+                cl = get_last_client()
+                self._mark_logged_in(username)
+            else:
+                # Need a fresh login
+                try:
+                    login_only(
+                        username, password,
+                        log=self._log,
+                        twofa_callback=self._ask_2fa_code,
+                    )
+                    cl = get_last_client()
+                    self._mark_logged_in(username)
+                except Exception as e:
+                    messagebox.showerror("Login Failed", str(e))
+                    return
 
         db_path = self._get_db_path()
         self._ensure_db(db_path)
@@ -2009,6 +2412,35 @@ class InstagramAnalyticsApp:
                 "Run a scan first.",
             )
             return
+
+        # Warn if engagement was analyzed recently
+        last_eng = get_last_engagement_time(db_path=db_path)
+        if last_eng:
+            try:
+                from datetime import datetime as _dt
+                last_dt = _dt.fromisoformat(last_eng)
+                delta = _dt.now() - last_dt
+                hours = delta.total_seconds() / 3600
+                if hours < 24:
+                    if hours < 1:
+                        ago = f"{int(delta.total_seconds() / 60)} minutes"
+                    else:
+                        ago = f"{hours:.1f} hours"
+                    proceed = messagebox.askyesno(
+                        "Recent Analysis Detected",
+                        f"Engagement was last analyzed {ago} ago "
+                        f"for @{username}.\n\n"
+                        "Running this too frequently increases the risk "
+                        "of Instagram flagging your account.\n\n"
+                        "It's recommended to wait at least 24 hours "
+                        "between engagement analyses.\n\n"
+                        "Continue anyway?",
+                        icon="warning",
+                    )
+                    if not proceed:
+                        return
+            except Exception:
+                pass
 
         media_n = self._get_media_count()
 
@@ -2028,6 +2460,8 @@ class InstagramAnalyticsApp:
         def _worker():
             try:
                 def log_to_ui(msg):
+                    if self._cancel_event.is_set():
+                        raise _Cancelled()
                     self.root.after(0, self._log, msg)
                     lower = msg.lower()
                     if "processing" in lower:
@@ -2040,8 +2474,21 @@ class InstagramAnalyticsApp:
                             "Fetching story viewers...",
                         )
 
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
+
+                t_step = time.time()
                 data = scrape_engagement(
                     media_count=media_n, log=log_to_ui,
+                )
+                scrape_time = self._format_elapsed(time.time() - t_step)
+
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
+
+                self.root.after(
+                    0, self._log,
+                    f"Scraped engagement data. ({scrape_time})",
                 )
 
                 was_rate_limited = data.get("rate_limited", False)
@@ -2053,6 +2500,7 @@ class InstagramAnalyticsApp:
                     0, self._update_progress_text,
                     "Saving engagement data...",
                 )
+                t_step = time.time()
                 store_media_items(
                     sid, data["media_items"], db_path=db_path,
                 )
@@ -2062,18 +2510,24 @@ class InstagramAnalyticsApp:
                 store_story_viewers(
                     sid, data["story_viewers"], db_path=db_path,
                 )
+                db_time = self._format_elapsed(time.time() - t_step)
 
                 self.root.after(
                     0, self._log,
                     f"Saved {data['media_count']} media items, "
                     f"{len(data['interactions'])} interactions, "
-                    f"{len(data['story_viewers'])} story views.",
+                    f"{len(data['story_viewers'])} story views. "
+                    f"({db_time})",
                 )
+
+                if self._cancel_event.is_set():
+                    raise _Cancelled()
 
                 self.root.after(
                     0, self._update_progress_text,
                     "Generating engagement report...",
                 )
+                t_step = time.time()
                 current_followers = get_session_followers(
                     sid, db_path=db_path,
                 )
@@ -2084,9 +2538,15 @@ class InstagramAnalyticsApp:
                     story_viewers=data["story_viewers"],
                     follower_count=latest["follower_count"],
                 )
+                report_time = self._format_elapsed(time.time() - t_step)
 
                 elapsed = time.time() - t0
                 elapsed_str = self._format_elapsed(elapsed)
+
+                self.root.after(
+                    0, self._log,
+                    f"Engagement report generated. ({report_time})",
+                )
 
                 self.root.after(
                     0, self._display_engagement, eng_report,
@@ -2132,6 +2592,10 @@ class InstagramAnalyticsApp:
                         f"Total time: {elapsed_str}.",
                     )
 
+            except _Cancelled:
+                self.root.after(0, self._log,
+                                "Engagement analysis cancelled.")
+                self.root.after(0, self._set_status, "Cancelled.")
             except IGRateLimitError as e:
                 cd = e.cooldown
                 self.root.after(0, self._log,
@@ -2452,6 +2916,8 @@ class InstagramAnalyticsApp:
             tree.pack(side="left", fill="x", expand=True)
             sb.pack(side="right", fill="y")
 
+            self._make_sortable(tree, cols)
+
             tk.Label(
                 inner,
                 text="Click a link to copy · Double-click a row to open in browser",
@@ -2732,6 +3198,11 @@ class InstagramAnalyticsApp:
             tree.pack(side="left", fill="x", expand=True)
             sb.pack(side="right", fill="y")
 
+            self._make_sortable(tree, cols)
+            self._add_filter_bar(
+                inner, tree, cols, filter_cols=["username"],
+            ).pack(fill="x", padx=20, pady=(0, 0), before=tbl)
+
         # ── Non-follower engagers ──
         nfe = eng.get("non_follower_engagers", [])
         if nfe:
@@ -2783,6 +3254,11 @@ class InstagramAnalyticsApp:
             tree2.pack(side="left", fill="x", expand=True)
             sb2.pack(side="right", fill="y")
 
+            self._make_sortable(tree2, cols2)
+            self._add_filter_bar(
+                inner, tree2, cols2, filter_cols=["username"],
+            ).pack(fill="x", padx=20, pady=(0, 0), before=tbl2)
+
         # ── Loyal Followers (like + comment + story view) ──
         loyal = eng.get("loyal_followers", [])
         if loyal:
@@ -2820,10 +3296,11 @@ class InstagramAnalyticsApp:
             tree3.column("full_name", width=300, stretch=True)
             tree3.tag_configure("stripe", background=t["STRIPE"])
 
+            photo_dir = self._get_photo_dir()
             for i, u in enumerate(loyal, 1):
                 tags = ("stripe",) if i % 2 == 0 else ()
                 photo_path = (
-                    os.path.join(PHOTO_DIR, f"{u['username']}_32.png")
+                    os.path.join(photo_dir, f"{u['username']}_32.png")
                     if HAS_PIL else None
                 )
                 img = (
@@ -2846,6 +3323,11 @@ class InstagramAnalyticsApp:
             tree3.configure(yscrollcommand=sb3.set)
             tree3.pack(side="left", fill="x", expand=True)
             sb3.pack(side="right", fill="y")
+
+            self._make_sortable(tree3, cols3)
+            self._add_filter_bar(
+                inner, tree3, cols3, filter_cols=["username", "full_name"],
+            ).pack(fill="x", padx=20, pady=(0, 0), before=tbl3)
 
         # ── Story Viewer List ──
         sv_list = eng.get("story_viewer_list", [])
@@ -2891,6 +3373,11 @@ class InstagramAnalyticsApp:
             tree4.configure(yscrollcommand=sb4.set)
             tree4.pack(side="left", fill="x", expand=True)
             sb4.pack(side="right", fill="y")
+
+            self._make_sortable(tree4, cols4)
+            self._add_filter_bar(
+                inner, tree4, cols4, filter_cols=["username"],
+            ).pack(fill="x", padx=20, pady=(0, 0), before=tbl4)
 
     # ── Ghost Followers tab ──────────────────────────────────────────────
 
@@ -3014,10 +3501,11 @@ class InstagramAnalyticsApp:
         tree.column("full_name", width=300, minwidth=120, stretch=True)
         tree.tag_configure("stripe", background=t["STRIPE"])
 
+        photo_dir = self._get_photo_dir()
         for i, u in enumerate(ghosts, 1):
             tags = ("stripe",) if i % 2 == 0 else ()
             photo_path = (
-                os.path.join(PHOTO_DIR, f"{u['username']}_32.png")
+                os.path.join(photo_dir, f"{u['username']}_32.png")
                 if HAS_PIL else None
             )
             img = (
@@ -3039,6 +3527,11 @@ class InstagramAnalyticsApp:
         tree.configure(yscrollcommand=sb.set)
         tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
+
+        self._make_sortable(tree, cols)
+        self._add_filter_bar(
+            parent, tree, cols, filter_cols=["username", "full_name"],
+        ).pack(fill="x", padx=20, pady=(0, 0), before=table_frame)
 
         self._action_tables["ghost"]["tree"] = tree
 
@@ -3259,12 +3752,12 @@ class InstagramAnalyticsApp:
         self._btn_pick_winner.pack(side="left")
         _hover_bind(self._btn_pick_winner, t["GREEN"], "#16a34a")
 
-        # Winner display card
+        # Winner display card (hidden until a winner is picked)
         self._winner_card = tk.Frame(
             inner, bg=t["BG_CARD"],
             highlightbackground=t["ACCENT"], highlightthickness=0,
         )
-        self._winner_card.pack(anchor="center", padx=60, pady=(16, 20))
+        # Don't pack yet — shown only when a winner is picked
 
         self._giveaway_confetti_var = tk.StringVar(value="")
         self._lbl_confetti_top = tk.Label(
@@ -3341,6 +3834,7 @@ class InstagramAnalyticsApp:
         self._giveaway_winner_sub_var.set("")
         self._giveaway_confetti_var.set("")
         self._winner_card.configure(highlightthickness=0)
+        self._winner_card.pack_forget()
         self._giveaway_eligible_var.set("")
         self._show_progress("Fetching giveaway post data...")
         self.notebook.select(self.winner_frame)
@@ -3530,6 +4024,7 @@ class InstagramAnalyticsApp:
         self._giveaway_winner_sub_var.set("")
         self._giveaway_confetti_var.set("")
         self._winner_card.configure(highlightthickness=0)
+        self._winner_card.pack_forget()
         self._update_eligible_tree(eligible)
 
     def _update_eligible_tree(self, eligible):
@@ -3565,6 +4060,8 @@ class InstagramAnalyticsApp:
         tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
 
+        self._make_sortable(tree, cols)
+
     def _on_pick_winner(self):
         import random
 
@@ -3597,6 +4094,8 @@ class InstagramAnalyticsApp:
         # Show the card with accent border
         t = self.t
         self._winner_card.configure(highlightthickness=2)
+        if not self._winner_card.winfo_manager():
+            self._winner_card.pack(anchor="center", padx=60, pady=(16, 20))
 
         # Confetti animation
         confetti_frames = [
@@ -3644,10 +4143,11 @@ class InstagramAnalyticsApp:
             return
         purge_db(db_path)
         # Also purge cached profile photos
-        if os.path.exists(PHOTO_DIR):
+        photo_dir = self._get_photo_dir(username)
+        if os.path.exists(photo_dir):
             try:
-                shutil.rmtree(PHOTO_DIR)
-                self._log(f"Deleted profile photo cache: {PHOTO_DIR}")
+                shutil.rmtree(photo_dir)
+                self._log(f"Deleted profile photo cache: {photo_dir}")
             except Exception as e:
                 self._log(f"Could not delete photos: {e}")
         for frame in (

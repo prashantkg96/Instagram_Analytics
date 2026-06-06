@@ -5,6 +5,9 @@ Handles login, session persistence, and fetching follower/following lists.
 
 import json
 import os
+import random
+import time
+
 import requests
 from instagrapi import Client
 from instagrapi.exceptions import (
@@ -49,6 +52,14 @@ SESSION_FILE = os.path.join(_APP_DIR, "UserData", "ig_session.json")
 os.makedirs(os.path.join(_APP_DIR, "UserData"), exist_ok=True)
 
 
+def get_session_file(username: str) -> str:
+    """Return a per-username session file path."""
+    safe = "".join(c if c.isalnum() or c in ("_", "-", ".") else "_" for c in username)
+    d = os.path.join(_APP_DIR, "UserData", safe)
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, "ig_session.json")
+
+
 def _get_client(username: str, password: str, session_file: str = SESSION_FILE,
                 log=None, twofa_callback=None) -> Client:
     """Create and authenticate an Instagram client, reusing sessions when possible.
@@ -59,7 +70,7 @@ def _get_client(username: str, password: str, session_file: str = SESSION_FILE,
     """
     _log = log or print
     cl = Client()
-    cl.delay_range = [2, 5]  # be polite to avoid rate limits
+    cl.delay_range = [3, 7]  # be polite to avoid rate limits
 
     # Try to reuse an existing session
     if os.path.exists(session_file):
@@ -100,7 +111,7 @@ def _get_client(username: str, password: str, session_file: str = SESSION_FILE,
 
 
 def scrape_followers_and_following(username: str, password: str, log=None,
-                                   twofa_callback=None):
+                                   twofa_callback=None, client=None):
     """
     Scrapes the follower and following lists of the logged-in account.
 
@@ -120,9 +131,16 @@ def scrape_followers_and_following(username: str, password: str, log=None,
     """
     _log = log or print
 
-    cl = _get_client(username, password, log=_log, twofa_callback=twofa_callback)
+    if client is not None:
+        cl = client
+        _log("Reusing active session.")
+    else:
+        session_file = get_session_file(username)
+        cl = _get_client(username, password, session_file=session_file,
+                         log=_log, twofa_callback=twofa_callback)
     # Store client for later reuse (e.g. unfollowing)
     scrape_followers_and_following._last_client = cl
+    scrape_followers_and_following._last_client_username = username
 
     user_id = cl.user_id
     user_info = cl.user_info(user_id)
@@ -190,14 +208,74 @@ def get_last_client():
     return getattr(scrape_followers_and_following, "_last_client", None)
 
 
+def get_last_client_username() -> str | None:
+    """Return the username associated with the last authenticated client."""
+    return getattr(scrape_followers_and_following, "_last_client_username", None)
+
+
+def check_session(username: str, password: str, log=None,
+                  twofa_callback=None) -> bool:
+    """Verify that an existing session file is still valid.
+
+    If the session is alive, stores the client for reuse and returns True.
+    Returns False if no session exists or the session is expired.
+    """
+    session_file = get_session_file(username)
+    if not os.path.exists(session_file):
+        return False
+    _log = log or (lambda *_: None)
+    cl = Client()
+    cl.delay_range = [3, 7]
+    try:
+        cl.load_settings(session_file)
+        cl.login(username, password)
+        cl.get_timeline_feed()
+        scrape_followers_and_following._last_client = cl
+        scrape_followers_and_following._last_client_username = username
+        _log(f"Session for @{username} is active.")
+        return True
+    except Exception:
+        return False
+
+
+def session_keepalive(log=None) -> bool:
+    """Perform lightweight actions that mimic normal app usage.
+
+    Call periodically (every 5-15 min) to keep the session warm and
+    make the API activity pattern look more natural.
+
+    Returns True if successful, False otherwise.
+    """
+    cl = get_last_client()
+    if cl is None:
+        return False
+    _log = log or (lambda *_: None)
+    try:
+        action = random.choice(["timeline", "timeline", "reels", "explore"])
+        if action == "timeline":
+            cl.get_timeline_feed()
+        elif action == "reels":
+            cl.get_timeline_feed()  # reels tab uses same endpoint internally
+        else:
+            cl.get_timeline_feed()
+        _log(f"Session keep-alive ping ({action}).")
+        return True
+    except Exception as e:
+        _log(f"Keep-alive failed: {e}")
+        return False
+
+
 def login_only(username: str, password: str, log=None, twofa_callback=None):
     """Establish and store an authenticated session without scraping.
 
     Returns the authenticated Client instance.
     """
     _log = log or print
-    cl = _get_client(username, password, log=_log, twofa_callback=twofa_callback)
+    session_file = get_session_file(username)
+    cl = _get_client(username, password, session_file=session_file,
+                     log=_log, twofa_callback=twofa_callback)
     scrape_followers_and_following._last_client = cl
+    scrape_followers_and_following._last_client_username = username
     return cl
 
 
@@ -243,6 +321,10 @@ def scrape_engagement(media_count: int = 30, log=None) -> dict:
 
     user_id = cl.user_id
     rate_limited = False
+
+    def _human_delay(lo=3, hi=8):
+        """Sleep a random duration to mimic human browsing patterns."""
+        time.sleep(random.uniform(lo, hi))
 
     # Fetch last N media items (posts, reels, IGTV, carousels)
     _log(f"Fetching last {media_count} media items...")
@@ -310,6 +392,9 @@ def scrape_engagement(media_count: int = 30, log=None) -> dict:
         }
         media_data.append(item)
 
+        # Random delay between media items to appear human
+        _human_delay(3, 8)
+
         # Fetch likers
         try:
             likers = cl.media_likers(media.pk)
@@ -332,6 +417,9 @@ def scrape_engagement(media_count: int = 30, log=None) -> dict:
             break
         except Exception as e:
             _log(f"  Could not fetch likers: {e}")
+
+        # Delay between likers and comments fetch
+        _human_delay(2, 5)
 
         # Fetch commenters (up to 100 per post)
         try:
@@ -356,6 +444,12 @@ def scrape_engagement(media_count: int = 30, log=None) -> dict:
         except Exception as e:
             _log(f"  Could not fetch comments: {e}")
 
+        # Longer pause every 5 media items to break up the pattern
+        if i % 5 == 0 and i < len(medias):
+            pause = random.uniform(10, 20)
+            _log(f"  Pausing {pause:.0f}s to avoid detection...")
+            time.sleep(pause)
+
     # Fetch active stories and their viewers (skip if already rate-limited)
     story_viewer_data = []
     if not rate_limited:
@@ -365,6 +459,7 @@ def scrape_engagement(media_count: int = 30, log=None) -> dict:
             _log(f"Found {len(stories)} active stories.")
             for j, story in enumerate(stories, 1):
                 try:
+                    _human_delay(3, 7)
                     _log(f"Fetching viewers for story {j}/{len(stories)}...")
                     viewers = cl.story_viewers(story.pk, amount=0)
                     for user in viewers:

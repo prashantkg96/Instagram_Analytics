@@ -8,14 +8,19 @@ import os
 from datetime import datetime
 from typing import Optional
 
-DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UserData", "data")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_DIR = os.path.join(_APP_DIR, "UserData", "data")
 DB_PATH = os.path.join(DB_DIR, "instagram_analytics.db")
 
 
 def get_db_path_for_profile(username: str) -> str:
-    """Return the database file path for a given profile username."""
+    """Return the database file path for a given profile username.
+
+    Databases are stored per-username under UserData/<username>/data/.
+    """
     safe_name = "".join(c if c.isalnum() or c in ("_", "-", ".") else "_" for c in username)
-    return os.path.join(DB_DIR, f"{safe_name}.db")
+    user_db_dir = os.path.join(_APP_DIR, "UserData", safe_name, "data")
+    return os.path.join(user_db_dir, f"{safe_name}.db")
 
 
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
@@ -342,6 +347,22 @@ def has_engagement_data(session_id: int, db_path: str = DB_PATH) -> bool:
     count = cursor.fetchone()[0]
     conn.close()
     return count > 0
+
+
+def get_last_engagement_time(db_path: str = DB_PATH) -> Optional[str]:
+    """Return the ISO timestamp of the most recent session that has engagement data."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT s.scraped_at
+        FROM scrape_sessions s
+        INNER JOIN media_items m ON m.session_id = s.id
+        ORDER BY s.scraped_at DESC
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    conn.close()
+    return row["scraped_at"] if row else None
 
 
 def purge_db(db_path: str = DB_PATH):

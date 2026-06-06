@@ -26,6 +26,7 @@
 - **Unfollowers** — detect who unfollowed since last scan
 - **New Followers** — see who recently followed you
 - **Timeline** — historical follower/following graph across all scans
+- **Auto-load last report** — selecting a saved account instantly shows the most recent scan data
 
 ### 🌊 Engagement & Content Analytics
 - **Content breakdown** by type (Photo, Reel, Carousel, Video, IGTV) with avg likes, comments, views, and engagement rate
@@ -48,6 +49,7 @@
 - **Batch unfollow** users directly from Don't Follow Back, Unfollowers, or Ghost tables
 - **Open profiles** in browser (single or batch)
 - **Copy post links** to clipboard from the top posts table
+- **Cancel button** — stop any long-running operation mid-way
 
 ### 🎨 UI
 - **Dark & Light themes** — toggle with one click
@@ -55,6 +57,26 @@
 - **Profile photos** — circular thumbnails cached locally
 - **Tooltips** on every metric explaining what it means
 - **Real-time progress** bar and log during operations
+- **Clear log** button to reset the activity log
+- **Sort & filter** on all tables — click any column header to sort, use the filter bar to search
+- **Per-step timing** in logs so you know how long each stage takes
+
+### 🛡️ Anti-Detection & Session Management
+- **Session reuse** — detects active sessions automatically; login button shows status ("⏳ Checking..." → "✅ Already logged in")
+- **Background keep-alive** — pings Instagram every 5–12 minutes to keep your session warm
+- **Human-like delays** — randomized pauses between API calls (3–8s per request, 10–20s pauses every 5 posts)
+- **Engagement frequency warning** — warns if you run engagement analysis more than once in 24 hours
+- **Per-account data isolation** — each account gets its own session file, database, and photo cache
+
+---
+
+## Privacy & Security
+
+> **Your credentials never leave your machine.**
+
+All usernames and passwords are stored **locally on your device only** — in `UserData/saved_accounts.json` (base64-encoded). They are **never uploaded, transmitted, or shared** with any server other than Instagram's own API during login.
+
+If you prefer not to save your password locally, simply leave the **"Save"** checkbox unchecked. You can enter your password manually each time you need to log in — the app works exactly the same either way.
 
 ---
 
@@ -94,7 +116,7 @@ Enter your Instagram username and password, then click **🔑 Login** or **▶ S
 | **🌊 Ghosts** | Ghost followers with unfollow actions |
 | **🕔 Timeline** | Historical follower/following counts |
 | **🏆 Winner** | Giveaway picker from any post URL |
-| **📝 Log** | Real-time activity log |
+| **📝 Log** | Real-time activity log with clear button |
 
 ---
 
@@ -110,11 +132,11 @@ Instagram_Analytics/
 ├── app_icon.png      # App icon
 └── UserData/         # Local data (gitignored)
     ├── saved_accounts.json
-    ├── ig_session.json
-    ├── .disclaimer_accepted
-    ├── profile_photos/
-    └── data/
-        └── {username}.db
+    └── {username}/
+        ├── ig_session.json
+        ├── data/
+        │   └── {username}.db
+        └── profile_photos/
 ```
 
 ---
@@ -133,20 +155,22 @@ flowchart LR
     G --> H[Pick Winner]
 ```
 
-1. **Login** — Authenticates via instagrapi with session reuse and 2FA support
-2. **Scan** — Fetches follower/following lists and stores snapshots in per-profile SQLite databases
-3. **Analyze** — Compares current vs previous scans to detect unfollowers, new followers, and growth trends
-4. **Engagement** — Fetches recent posts and ranks followers by interaction frequency
-5. **Giveaway** — Scrapes a post's likers/commenters, intersects with filters, and picks a random winner
+1. **Login** — Authenticates via instagrapi with session reuse and 2FA support. Active sessions are detected automatically so you don't re-login unnecessarily.
+2. **Scan** — Fetches follower/following lists and stores snapshots in per-profile SQLite databases. Reuses existing sessions when available.
+3. **Analyze** — Compares current vs previous scans to detect unfollowers, new followers, and growth trends. Last report auto-loads when you select an account.
+4. **Engagement** — Fetches recent posts (default: 10) and ranks followers by interaction frequency. Includes anti-detection delays.
+5. **Giveaway** — Scrapes a post's likers/commenters, intersects with filters, and picks a random winner.
 
 ---
 
-## Rate Limiting
+## Rate Limiting & Anti-Detection
 
-The app handles Instagram's rate limits automatically:
+The app handles Instagram's rate limits and minimizes detection risk:
 - Detects throttle errors and shows countdown timers on buttons
 - Returns partial data if rate-limited mid-operation
-- Adds 2–5 second delays between API requests
+- Adds randomized delays between API requests (3–7s base, extra pauses every 5 posts)
+- Background session keep-alive mimics normal app usage
+- Warns before running engagement analysis too frequently
 
 ---
 
