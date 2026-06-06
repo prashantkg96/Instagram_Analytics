@@ -1,0 +1,5 @@
+UserData/
+__pycache__/
+*.pyc
+.env
+generate_icon.py
