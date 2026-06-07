@@ -152,8 +152,8 @@ class _ToolTip:
         self.widget = widget
         self.text = text
         self.tip = None
-        widget.bind("<Enter>", self._show)
-        widget.bind("<Leave>", self._hide)
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
 
     def _show(self, _event=None):
         x = self.widget.winfo_rootx() + 20
@@ -207,8 +207,8 @@ def _load_photo_tk(path: str):
 
 def _hover_bind(btn, normal_bg, hover_bg):
     """Add hover color transition to a button."""
-    btn.bind("<Enter>", lambda e: btn.configure(bg=hover_bg))
-    btn.bind("<Leave>", lambda e: btn.configure(bg=normal_bg))
+    btn.bind("<Enter>", lambda e: btn.configure(bg=hover_bg), add="+")
+    btn.bind("<Leave>", lambda e: btn.configure(bg=normal_bg), add="+")
 
 
 # ── Main application ─────────────────────────────────────────────────────────
@@ -347,6 +347,7 @@ class InstagramAnalyticsApp:
             self.btn_login.configure(
                 state="disabled", text="\u2705 Already logged in",
             )
+            self._login_tooltip.text = f"Session already active for @{username}"
             return
         # Reset login button for a different user
         self._logged_in_user = None
@@ -358,6 +359,10 @@ class InstagramAnalyticsApp:
                 state="normal",
                 text="\U0001F511 Login",
                 bg=t["BTN_BG"], fg=t["BTN_FG"],
+            )
+            self._login_tooltip.text = (
+                "Establish a session without scraping.\n"
+                "Useful for the Winner tab."
             )
             return
         # Disable button and show a spinner while checking
@@ -381,6 +386,10 @@ class InstagramAnalyticsApp:
                         text="\U0001F511 Login",
                         bg=t["BTN_BG"], fg=t["BTN_FG"],
                     )
+                    self._login_tooltip.text = (
+                        "Establish a session without scraping.\n"
+                        "Useful for the Winner tab."
+                    )
                 self.root.after(0, _enable)
 
         threading.Thread(target=_bg_check, daemon=True).start()
@@ -393,6 +402,7 @@ class InstagramAnalyticsApp:
             self.btn_login.configure(
                 state="disabled", text="\u2705 Already logged in",
             )
+            self._login_tooltip.text = f"Session already active for @{username}"
             self._set_status(f"Session active for @{username}")
             self._start_keepalive()
 
@@ -541,9 +551,11 @@ class InstagramAnalyticsApp:
         )
         self.btn_login.pack(side="left", padx=(0, 8))
         _hover_bind(self.btn_login, t["BTN_BG"], t["BTN_HOVER"])
-        _ToolTip(self.btn_login,
-                 "Establish a session without scraping.\n"
-                 "Useful for the Winner tab.")
+        self._login_tooltip = _ToolTip(
+            self.btn_login,
+            "Establish a session without scraping.\n"
+            "Useful for the Winner tab.",
+        )
 
         self.btn_theme = tk.Button(
             self.top_frame, text="\u263e", command=self._toggle_theme,
@@ -1006,6 +1018,9 @@ class InstagramAnalyticsApp:
                 self.btn_login.configure(
                     state="disabled",
                     text="\u2705 Already logged in",
+                )
+                self._login_tooltip.text = (
+                    f"Session already active for @{current}"
                 )
 
     # ------ Cooldown timer for rate-limited buttons ------
