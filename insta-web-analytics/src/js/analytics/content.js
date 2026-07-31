@@ -15,6 +15,30 @@ export function content(data) {
 
   const typeMix = ranked(countBy(all, (m) => m.type));
 
+  /**
+   * How regularly you post, and how long since you last did.
+   *
+   * Stories are excluded: they are posted in same-day bursts, which drags the
+   * median gap to zero and says nothing about publishing cadence. "Now" is the
+   * export's generation date, not the clock — the same archive must produce
+   * the same numbers whenever it is re-analysed.
+   */
+  const gaps = (() => {
+    const feed = all.filter((m) => m.type !== 'story');
+    const times = feed.map((m) => +new Date(m.at)).filter(Number.isFinite).sort((a, b) => a - b);
+    if (times.length < 2) return null;
+    const days = [];
+    for (let i = 1; i < times.length; i++) days.push((times[i] - times[i - 1]) / 86400000);
+    const sorted = [...days].sort((a, b) => a - b);
+    const asOf = +new Date(data.meta?.generatedAt ?? times.at(-1));
+    return {
+      longestDays: Math.round(Math.max(...days)),
+      medianDays: round(sorted[Math.floor(sorted.length / 2)], 1),
+      sinceLastDays: Math.max(0, Math.round((asOf - times.at(-1)) / 86400000)),
+      lastAt: new Date(times.at(-1)).toISOString(),
+    };
+  })();
+
   // Month-by-month split per content type, for the stacked cadence chart.
   const months = [...new Set(all.map(monthOf).filter(Boolean))].sort();
   const cadence = months.map((month) => {
@@ -53,6 +77,7 @@ export function content(data) {
     byWeekday: weekdayHistogram(all),
     heatmap: heatmap(all),
     streaks: streaks(all),
+    gaps,
     captions: {
       withCaption: captionLengths.length,
       medianLength: median(captionLengths),

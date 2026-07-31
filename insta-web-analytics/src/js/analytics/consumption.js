@@ -13,8 +13,10 @@ import {
 const LATE_NIGHT = new Set([0, 1, 2, 3, 4]);
 
 export function consumption(data) {
-  const { storiesViewed, postsViewed, videosWatched, searches, linkHistory, notInterestedPosts } =
-    data.consumption;
+  const {
+    storiesViewed, postsViewed, videosWatched, searches, linkHistory,
+    notInterestedPosts, notInterestedProfiles = [], suggestedProfiles = [],
+  } = data.consumption;
 
   const impressions = [...storiesViewed, ...postsViewed, ...videosWatched];
   const daily = dailySeries(impressions);
@@ -40,6 +42,23 @@ export function consumption(data) {
       notInterested: notInterestedPosts.length,
       searches: searches.length,
       links: linkHistory.length,
+    },
+
+    /**
+     * The recommendation loop: accounts Instagram pushed at you, and how much
+     * of what it pushed you actively rejected. Both sides are recorded, so the
+     * rejection rate is a real number rather than an impression.
+     */
+    discovery: {
+      suggested: suggestedProfiles.length,
+      dismissedProfiles: notInterestedProfiles.length,
+      dismissedPosts: notInterestedPosts.length,
+      // Of the accounts it suggested, how many you told it to stop showing.
+      rejectionPct: suggestedProfiles.length
+        ? Math.round((notInterestedProfiles.length / suggestedProfiles.length) * 1000) / 10
+        : null,
+      profiles: suggestedProfiles.slice(-200).reverse(),
+      dismissed: notInterestedProfiles.filter((p) => p.u).slice(-200).reverse(),
     },
     daily,
     // Median rather than mean: a handful of binge days would otherwise make

@@ -397,6 +397,82 @@ export function growthView(data, results) {
           { tableView: countTable(at.byType.map((t) => ({ key: t.type, count: t.perPost })), 'Type', 'Per post') },
         ),
       ),
+      h('div', { class: 'grid cols-2' },
+        // byHour was computed all along and only ever used for a single tile.
+        chartCard('Followers gained per post, by hour', null,
+          columnChart(
+            Array.from({ length: 24 }, (_, hour) => {
+              const row = at.byHour.find((b) => Number(b.key) === hour);
+              return { key: String(hour), count: row ? row.perPost : 0 };
+            }),
+            { label: 'followers per post' },
+          ),
+          {
+            tableView: countTable(
+              at.byHour.map((b) => ({ key: hourLabel(Number(b.key)), count: b.perPost })),
+              'Hour', 'Per post',
+            ),
+          },
+        ),
+        chartCard('By number of items', 'Whether carousels outperform single images.',
+          barsChart(at.byCarousel.map((c) => ({ key: c.key, count: c.perPost })), { label: 'followers per post' }),
+          { tableView: countTable(at.byCarousel.map((c) => ({ key: c.key, count: c.perPost })), 'Post', 'Per post') },
+        ),
+      ),
+    ));
+  }
+
+  // When you post, against when posting works. Only worth a section when the
+  // two disagree — if they already match there is nothing to act on.
+  const mism = at.timing;
+  if (mism && (!mism.hour.aligned || !mism.day.aligned) && mism.hour.best && mism.day.best) {
+    frag.append(section('When you post vs when it works', null,
+      h('div', { class: 'grid cols-4' },
+        tile('You post most at', hourLabel(Number(mism.hour.posted.key)), {
+          sub: `${mism.hour.posted.posts} posts · ${mism.hour.posted.perPost} followers each`,
+        }),
+        tile('Best hour', hourLabel(Number(mism.hour.best.key)), {
+          sub: `${mism.hour.best.posts} posts · ${mism.hour.best.perPost} followers each`,
+        }),
+        tile('You post most on', mism.day.posted.key, {
+          sub: `${mism.day.posted.posts} posts · ${mism.day.posted.perPost} followers each`,
+        }),
+        tile('Best day', mism.day.best.key, {
+          sub: `${mism.day.best.posts} posts · ${mism.day.best.perPost} followers each`,
+        }),
+      ),
+    ));
+  }
+
+  if (at.byPlace.length >= 3) {
+    frag.append(section('Where you posted from', null,
+      card(null, 'Locations tagged on your posts, ranked by followers gained.', table(
+        [
+          { key: 'key', label: 'Place' },
+          { key: 'posts', label: 'Posts', num: true },
+          { key: 'gained', label: 'Followers', num: true },
+          { key: 'perPost', label: 'Per post', num: true },
+        ],
+        at.byPlace,
+        { filter: at.byPlace.length > 15 },
+      )),
+    ));
+  }
+
+  // Hidden rather than shown empty: ranking hashtags needs tags that actually
+  // repeat, and most accounts that barely use them would get a table of noise.
+  if (at.byHashtag.length >= 3) {
+    frag.append(section('Hashtags', null,
+      card(null, 'Tags used on at least two posts, ranked by followers gained.', table(
+        [
+          { key: 'key', label: 'Hashtag', render: (v) => `#${v}` },
+          { key: 'posts', label: 'Posts', num: true },
+          { key: 'gained', label: 'Followers', num: true },
+          { key: 'perPost', label: 'Per post', num: true },
+        ],
+        at.byHashtag,
+        { filter: at.byHashtag.length > 15 },
+      )),
     ));
   }
   return frag;
@@ -418,6 +494,21 @@ export function contentView(data, results) {
       }),
       tile('Geotagged', c.flags.geotagged, { sub: `${pct(c.flags.geotaggedPct)} of posts`, goodWhenUp: false }),
     ),
+    // Cadence measured on posts and reels only — stories go out in same-day
+    // bursts and would drag every gap here to zero.
+    c.gaps
+      ? h('div', { class: 'grid cols-3' },
+          tile('Typical gap between posts', `${c.gaps.medianDays}d`, {
+            sub: 'median, stories excluded',
+            goodWhenUp: false,
+          }),
+          tile('Longest gap between posts', `${c.gaps.longestDays}d`, { goodWhenUp: false }),
+          tile('Since your last post', `${c.gaps.sinceLastDays}d`, {
+            sub: shortDate(c.gaps.lastAt),
+            goodWhenUp: false,
+          }),
+        )
+      : null,
   ));
 
   if (c.cadence.length) {
@@ -510,6 +601,9 @@ export function engagementView(data, results) {
       tile('Comments written', data.engagement.comments),
       tile('Story responses', af.storyResponseCount, {
         sub: 'polls, quizzes, sliders, countdowns',
+      }),
+      tile('Notes and reposts', af.notesRepostCount, {
+        sub: af.notesRepostCount ? 'people whose notes you engaged with' : null,
       }),
     ),
   ));
@@ -645,6 +739,39 @@ export function consumptionView(data, results) {
       tile('Ads in the mix', pct(results.ads.adShare), { goodWhenUp: false }),
     ),
   ));
+
+  const disc = c.discovery;
+  if (disc && disc.suggested) {
+    frag.append(section('What Instagram pushed at you',
+      'Accounts it suggested unprompted, and how much of that you rejected.',
+      h('div', { class: 'grid cols-3' },
+        tile('Accounts suggested', disc.suggested),
+        tile('Profiles you dismissed', disc.dismissedProfiles, {
+          sub: disc.rejectionPct === null ? null : `${pct(disc.rejectionPct)} of what it suggested`,
+        }),
+        tile('Posts you dismissed', disc.dismissedPosts),
+      ),
+      h('div', { class: 'grid cols-2 stack' },
+        card('Suggested to you', null, table(
+          [
+            { key: 'u', label: 'Account', render: (v) => handle(v) },
+            { key: 'name', label: 'Name' },
+            { key: 'at', label: 'When', render: (v) => shortDate(v) },
+          ],
+          disc.profiles,
+          { filter: true },
+        )),
+        card('You told it to stop', null, table(
+          [
+            { key: 'u', label: 'Account', render: (v) => handle(v) },
+            { key: 'at', label: 'When', render: (v) => shortDate(v) },
+          ],
+          disc.dismissed,
+          { filter: true },
+        )),
+      ),
+    ));
+  }
 
   if (c.daily.length > 1) {
     frag.append(section(null, null, chartCard(
@@ -811,6 +938,40 @@ export function privacyView(data, results) {
       p.settings,
     )),
   )));
+
+  if (p.sessions?.count || p.notifications?.total) {
+    frag.append(section('Sessions and notifications', null,
+      h('div', { class: 'grid cols-4' },
+        // Pairing each logout with the login before it is the only way to get a
+        // duration out of this export; nothing else records time spent.
+        tile('Sessions measured', p.sessions.count, {
+          sub: 'logins paired with a logout',
+        }),
+        tile('Typical session', p.sessions.medianSeconds === null ? '—' : duration(p.sessions.medianSeconds)),
+        tile('Longest session', p.sessions.longestSeconds === null ? '—' : duration(p.sessions.longestSeconds), {
+          goodWhenUp: false,
+        }),
+        tile('Notifications off', `${p.notifications.off} of ${p.notifications.total}`, {
+          sub: 'push and email settings',
+        }),
+      ),
+      p.notifications.rows.length
+        ? card('Notification settings', null, table(
+            [
+              { key: 'channel', label: 'Channel' },
+              { key: 'type', label: 'Notification' },
+              {
+                key: 'value',
+                label: 'State',
+                render: (v) => h('span', { class: `pill ${/off|false/i.test(v ?? '') ? '' : 'good'}` }, String(v ?? '—')),
+              },
+            ],
+            p.notifications.rows,
+            { filter: p.notifications.rows.length > 15 },
+          ))
+        : null,
+    ));
+  }
 
   frag.append(section(null, null, notice(
     '<strong>Before sharing this ZIP with anyone</strong>, delete at minimum: ' +

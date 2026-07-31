@@ -40,6 +40,17 @@ export function parseConsumption(files) {
     pickAll(files, /profiles_you.?re_not_interested_in\.html$/i),
   ).map((node) => ({ at: iso(when(node)), u: field(node, 'Username') ?? null }));
 
+  // Accounts Instagram put in front of you unprompted. Paired with the
+  // dismissals above this is the whole recommendation loop: what it pushed,
+  // and how much of it you rejected.
+  const suggestedProfiles = nodesOf(
+    pickAll(files, /suggested_profiles_viewed\.html$/i),
+  ).map((node) => ({
+    at: iso(when(node)),
+    u: field(node, 'Username') ?? null,
+    name: field(node, 'Name') ?? null,
+  })).filter((p) => p.u);
+
   const searches = nodesOf(pickAll(files, /recent_searches\/.*\.html$/i)).map((node) => ({
     q: field(node, 'Search') ?? field(node, 'Query') ?? null,
     at: iso(when(node)),
@@ -72,6 +83,7 @@ export function parseConsumption(files) {
     videosWatched,
     notInterestedPosts,
     notInterestedProfiles,
+    suggestedProfiles,
     searches,
     linkHistory,
   };

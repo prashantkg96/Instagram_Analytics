@@ -73,6 +73,22 @@ export function parseProfile(files) {
     at: iso(when(node, 'Creation Time')),
   }));
 
+  // Shopping checkout keeps a name, email and region on file. Nothing else in
+  // the export carries it, and it is real identity data, so the audit needs it.
+  const checkout = nodesOf(pickAll(files, /shopping\/checkout_payment_information\.html$/i));
+  const pick = (label) => checkout.map((node) => field(node, label)).find(Boolean) ?? null;
+  const payment = checkout.length
+    ? { name: pick('Name'), email: pick('Email'), region: pick('Region'), records: checkout.length }
+    : null;
+
+  const notifications = nodesOf(pickAll(files, /settings\/notification_preferences\.html$/i))
+    .map((node) => ({
+      channel: field(node, 'Channel') ?? null,
+      type: field(node, 'Notification type') ?? null,
+      value: field(node, 'Value') ?? null,
+    }))
+    .filter((n) => n.type);
+
   const interests = [];
   for (const node of nodesOf(pickAll(files, /locations_of_interest\.html$/i))) {
     const value = field(node, 'Locations of interest');
@@ -116,6 +132,8 @@ export function parseProfile(files) {
     privacyChanges,
     monetization,
     stars,
+    notifications,
+    payment,
 
     // Read for the audit tab only. Never serialized.
     sensitive: {

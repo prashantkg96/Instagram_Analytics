@@ -188,6 +188,40 @@ files.set('security_and_login_information/login_and_profile_creation/login_activ
     ])}</div>`,
   )).join('')));
 
+// Accounts Instagram suggested unprompted, and the ones the user rejected.
+files.set('ads_information/ads_and_topics/suggested_profiles_viewed.html', page('Suggested profiles',
+  Array.from({ length: 12 }, (_, i) => wrap(tbl([
+    cell('Name', `Suggested ${i}`),
+    cell('Username', `suggested_${i}`),
+  ])) + `<div>${stamp(dayOffset(i * 2))}</div>`).join('')));
+
+files.set("ads_information/ads_and_topics/profiles_you're_not_interested_in.html", page('Not interested',
+  Array.from({ length: 3 }, (_, i) => wrap(tbl([
+    cell('Username', `suggested_${i}`),
+  ])) + `<div>${stamp(dayOffset(i * 5))}</div>`).join('')));
+
+// Checkout keeps a name and email that appear nowhere else in the archive.
+files.set('your_instagram_activity/shopping/checkout_payment_information.html', page('Checkout',
+  wrap(tbl([
+    cell('Region', 'Asia Pacific'),
+    cell('Name', 'Test User'),
+    cell('Email', 'checkout-fixture@example.invalid'),
+  ]))));
+
+files.set('preferences/settings/notification_preferences.html', page('Notification preferences',
+  ['Likes', 'Comments', 'New followers', 'Live videos'].map((type, i) => wrap(tbl([
+    cell('Channel', i % 2 ? 'Email' : 'Push notifications'),
+    cell('Notification type', type),
+    cell('Value', i % 3 ? 'Off' : 'On'),
+  ]))).join('')));
+
+files.set('security_and_login_information/login_and_profile_creation/logout_activity.html', page('Logouts',
+  Array.from({ length: 3 }, (_, i) => wrap(tbl([
+    cell('IP Address', `198.51.100.${i}`),
+    cell('Time', stamp(new Date(2026, 0, 1 + i * 30, 9, 30))),
+    cell('User Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Gecko/20100101 Firefox/153.0'),
+  ]))).join('')));
+
 files.set('connections/contacts/synced_contacts.html', page('Synced contacts',
   Array.from({ length: 9 }, (_, i) => wrap(tbl([
     cell('First Name', `Contact${i}`),

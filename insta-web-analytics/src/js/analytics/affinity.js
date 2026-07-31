@@ -28,7 +28,8 @@ function add(map, handle, kind, at, weight) {
 
 export function affinity(data) {
   const {
-    likes, comments, saved, storyLikes, likedComments, storyResponses = [],
+    likes, comments, saved, storyLikes, likedComments,
+    storyResponses = [], notesReposts = [],
   } = data.engagement;
   const { storiesViewed, postsViewed, videosWatched } = data.consumption;
   const cov = data.coverage ?? {};
@@ -133,6 +134,8 @@ export function affinity(data) {
       : 0,
     recentLinks,
     storyResponseCount: storyResponses.length,
+    notesRepostCount: notesReposts.length,
+    notesReposts,
 
     quietFollowers,
     quietCount: quietFollowers.length,

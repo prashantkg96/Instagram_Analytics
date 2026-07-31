@@ -165,6 +165,57 @@ ok('older-vs-newer trend computed', at.trend !== null,
 ok('trend halves cover every post',
   !at.trend || at.trend.olderCount + at.trend.newerCount === at.posts.length);
 
+// ── the newer breakdowns ───────────────────────────────────────────────────
+// Invariants rather than fixed values, so these hold for the fixture and for
+// any real account regardless of how it posts.
+hr('post breakdowns');
+const feedPosts = data.content.published.filter((m) => m.type !== 'story');
+ok('carousel buckets account for every post',
+  at.byCarousel.reduce((s, b) => s + b.posts, 0) === at.posts.length,
+  `${at.byCarousel.map((b) => `${b.key}:${b.posts}`).join(' ')}`);
+ok('carousel buckets are ranked by per-post',
+  at.byCarousel.every((b, i) => i === 0 || at.byCarousel[i - 1].perPost >= b.perPost));
+ok('place ranking never claims more posts than were geotagged',
+  at.byPlace.every((p) => p.posts <= at.posts.length), `${at.byPlace.length} places`);
+ok('hashtag ranking only keeps tags used more than once',
+  at.byHashtag.every((t) => t.posts >= 2), `${at.byHashtag.length} rankable tags`);
+ok('every ranked bucket gained no more than the total attributed',
+  [...at.byPlace, ...at.byHashtag, ...at.byCarousel].every((b) => b.gained <= at.attributed));
+ok('timing names both where you post and what works',
+  Boolean(at.timing.hour.posted && at.timing.hour.best && at.timing.day.posted && at.timing.day.best),
+  `posts ${at.timing.hour.posted?.key}h/${at.timing.day.posted?.key}, best ${at.timing.hour.best?.key}h/${at.timing.day.best?.key}`);
+ok('most-posted really is the most posted',
+  at.byHour.every((b) => b.posts <= at.timing.hour.posted.posts));
+
+hr('cadence, discovery, sessions');
+ok('posting gaps exclude stories', !results.content.gaps || feedPosts.length >= 2,
+  results.content.gaps ? `median ${results.content.gaps.medianDays}d over ${feedPosts.length} posts` : 'too few posts');
+ok('longest gap is at least the median',
+  !results.content.gaps || results.content.gaps.longestDays >= results.content.gaps.medianDays);
+ok('days since last post is never negative',
+  !results.content.gaps || results.content.gaps.sinceLastDays >= 0);
+
+const disc = results.consumption.discovery;
+ok('suggested profiles parsed', disc.suggested > 0, `${disc.suggested} suggested`);
+ok('rejection rate matches its inputs',
+  disc.rejectionPct === null
+    || Math.abs(disc.rejectionPct - (disc.dismissedProfiles / disc.suggested) * 100) < 0.11,
+  `${disc.dismissedProfiles}/${disc.suggested} = ${disc.rejectionPct}%`);
+
+const sess = results.privacy.sessions;
+ok('sessions never run longer than a day',
+  sess.longestSeconds === null || sess.longestSeconds <= 86400, `${sess.count} sessions`);
+ok('median session is not longer than the longest',
+  sess.medianSeconds === null || sess.medianSeconds <= sess.longestSeconds);
+ok('notification preferences parsed',
+  results.privacy.notifications.total > 0,
+  `${results.privacy.notifications.off} off of ${results.privacy.notifications.total}`);
+ok('checkout details raised as a finding',
+  !data.profile.payment || results.privacy.findings.some((f) => /checkout/i.test(f.title)),
+  data.profile.payment ? 'payment record present' : 'no payment record');
+ok('checkout email never reaches the history file',
+  !data.profile.payment?.email || !text.includes(data.profile.payment.email));
+
 // ── chart axes fit the data (item 4) ───────────────────────────────────────
 // Reproduces the tick maths so the regression is caught here rather than by
 // eye: an axis whose top tick sits below the tallest bar is the defect.

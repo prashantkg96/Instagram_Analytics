@@ -44,6 +44,11 @@ export function parseEngagement(files) {
     ...listOf(files, /story_interactions\/countdowns\.html$/i, 'countdown'),
   ];
 
+  // Notes and reposts name their author in an `Author` block, which `ownerOf`
+  // already understands.
+  const notesReposts = listOf(files, /note_and_repost_interactions\.html$/i, 'note')
+    .filter((n) => n.u);
+
   // Comments carry the text the user wrote. Length and timing are kept for
   // analytics; the text itself is used only for emoji/word stats and is never
   // written to the history file.
@@ -65,6 +70,6 @@ export function parseEngagement(files) {
 
   return {
     likes, likedComments, storyLikes, saved, comments, savedCollections, savedMusic,
-    storyResponses,
+    storyResponses, notesReposts,
   };
 }

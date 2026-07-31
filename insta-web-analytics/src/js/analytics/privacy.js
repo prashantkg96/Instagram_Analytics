@@ -17,7 +17,50 @@ function finding(severity, title, detail, file, present = true) {
 export function privacy(data) {
   const s = data.profile.sensitive ?? {};
   const sec = data.security;
+  const pay = data.profile.payment ?? null;
   const found = [];
+
+  /**
+   * How long each session lasted, by pairing every logout with the login that
+   * preceded it. The only real "time spent in the app" figure the export
+   * contains — nothing else records a duration.
+   */
+  const sessions = (() => {
+    const ins = sec.logins.map((l) => +new Date(l.at)).filter(Number.isFinite).sort((a, b) => a - b);
+    const outs = sec.logouts.map((l) => +new Date(l.at)).filter(Number.isFinite).sort((a, b) => a - b);
+    const spans = [];
+    for (const out of outs) {
+      // The latest login before this logout; anything longer than a day is a
+      // session that was never closed, not a day-long sitting.
+      const start = ins.filter((t) => t <= out).at(-1);
+      if (start && out - start <= 86400000) spans.push((out - start) / 1000);
+    }
+    if (!spans.length) return { count: 0, medianSeconds: null, longestSeconds: null };
+    const sorted = [...spans].sort((a, b) => a - b);
+    return {
+      count: spans.length,
+      medianSeconds: Math.round(sorted[Math.floor(sorted.length / 2)]),
+      longestSeconds: Math.round(Math.max(...spans)),
+    };
+  })();
+
+  const prefs = data.profile.notifications ?? [];
+  const notifications = {
+    total: prefs.length,
+    off: prefs.filter((n) => /off|false/i.test(n.value ?? '')).length,
+    rows: prefs,
+  };
+
+  if (pay?.email || pay?.name) {
+    found.push(
+      finding(
+        'high',
+        'Shopping checkout details',
+        `Instagram kept a checkout profile — ${[pay.name && 'your full name', pay.email && 'an email address', pay.region && 'your region'].filter(Boolean).join(', ')} — from using Instagram shopping. It is separate from your account email and is easy to miss when reviewing this archive.`,
+        'your_instagram_activity/shopping/checkout_payment_information.html',
+      ),
+    );
+  }
 
   if (s.email || s.phone || s.dateOfBirth) {
     const parts = [
@@ -144,6 +187,8 @@ export function privacy(data) {
     cleared,
     settings,
     exposureScore: score,
+    notifications,
+    sessions,
     // Shown so the user can confirm what the audit is reading; never stored.
     identifiers: {
       email: s.email ?? null,
@@ -154,6 +199,8 @@ export function privacy(data) {
       deviceCount: sec.deviceIds.length,
       contactCount: data.syncedContactCount,
       gpsCount: geo.length,
+      paymentEmail: pay?.email ?? null,
+      paymentName: pay?.name ?? null,
     },
   };
 }

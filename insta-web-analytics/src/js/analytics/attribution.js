@@ -103,6 +103,49 @@ export function attribution(data, { windowDays = 7 } = {}) {
     return map.set(row.type, bucket);
   }, new Map()).values()].map((b) => ({ ...b, perPost: Math.round((b.gained / b.posts) * 100) / 100 }));
 
+  /**
+   * Rank an arbitrary property by followers gained per post.
+   *
+   * `keysOf` may return one key or several — a post carries several hashtags,
+   * and each should get credit for the post it appeared on. `minPosts` keeps
+   * one-off tags out of a ranking where a single follower would top the table.
+   */
+  const rank = (keysOf, minPosts = 1) => {
+    const buckets = new Map();
+    for (const row of rows) {
+      for (const key of [].concat(keysOf(row) ?? [])) {
+        if (key === null || key === undefined || key === '') continue;
+        const bucket = buckets.get(key) ?? { key, posts: 0, gained: 0 };
+        bucket.posts++;
+        bucket.gained += row.lastTouch;
+        buckets.set(key, bucket);
+      }
+    }
+    return [...buckets.values()]
+      .filter((b) => b.posts >= minPosts)
+      .map((b) => ({ ...b, perPost: Math.round((b.gained / b.posts) * 100) / 100 }))
+      .sort((a, b) => b.perPost - a.perPost || b.posts - a.posts);
+  };
+
+  const byHashtag = rank((r) => r.hashtags, 2);
+  const byPlace = rank((r) => r.place, 1);
+  // Bucketed rather than by exact count: "4 items" and "5 items" are the same
+  // decision, and splitting them leaves every bucket too small to read.
+  const byCarousel = rank((r) => (
+    r.mediaCount <= 1 ? 'Single' : r.mediaCount <= 3 ? '2–3 items' : '4+ items'
+  ));
+
+  // Where you post most, against where posting actually works. When those
+  // disagree it is the single most actionable line in the whole tab.
+  const mostPosted = (list) => [...list].sort((a, b) => b.posts - a.posts)[0] ?? null;
+  const timing = {
+    // byDay/byHour arrive sorted by perPost, so [0] is already the best slot.
+    hour: { posted: mostPosted(byHour), best: byHour[0] ?? null },
+    day: { posted: mostPosted(byDay), best: byDay[0] ?? null },
+  };
+  timing.hour.aligned = timing.hour.posted?.key === timing.hour.best?.key;
+  timing.day.aligned = timing.day.posted?.key === timing.day.best?.key;
+
   const attributed = rows.reduce((s, r) => s + r.lastTouch, 0);
 
   // Older half of your posting history against the newer half — the desktop
@@ -149,6 +192,10 @@ export function attribution(data, { windowDays = 7 } = {}) {
     // reports these as scalars and they read better on a tile.
     bestType: byType[0] ?? null,
     worstType: byType.length > 1 ? byType.at(-1) : null,
+    byHashtag,
+    byPlace,
+    byCarousel,
+    timing,
     trend,
     confidence,
     sample: { posts: posts.length, followers: followers.length },
