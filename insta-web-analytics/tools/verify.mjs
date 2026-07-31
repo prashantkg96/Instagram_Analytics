@@ -132,6 +132,83 @@ ok(`${secrets.length} distinctive sensitive values checked, none present`, leake
 // Message bodies and contact numbers must not survive either.
 ok('no synced contact numbers in history', !/\b[6-9]\d{9}\b/.test(text));
 
+// The profile picture is read out of the ZIP and shown in the header. Neither
+// the image nor the path to it may reach the file the user shares.
+ok('profile photo path resolved', Boolean(data.profile.photoPath), data.profile.photoPath ?? 'none');
+ok(
+  'profile photo path absent from history',
+  !data.profile.photoPath || !text.includes(data.profile.photoPath),
+);
+ok('no image data in history', !/\bdata:image\/|\bmedia\/other\//.test(text));
+
+// ── the statistics ported from the desktop app ─────────────────────────────
+hr('ported statistics');
+const af = results.affinity;
+ok('quiet followers computed', Array.isArray(af.quietFollowers),
+  `${af.quietCount} of ${results.audience.insights.followers} (${af.quietPct}%)`);
+ok('quiet followers never exceed followers', af.quietCount <= results.audience.insights.followers);
+ok('quiet followers are all followers', (() => {
+  const followers = new Set(data.followers.map((p) => p.u.toLowerCase()));
+  return af.quietFollowers.every((p) => followers.has(p.u.toLowerCase()));
+})());
+
+ok('story responses parsed', af.storyResponseCount > 0, `${af.storyResponseCount} polls/quizzes/sliders`);
+ok('recent interactions all carry a real permalink',
+  af.recentLinks.length > 0 && af.recentLinks.every((r) => /^https:\/\/www\.instagram\.com\//.test(r.url)),
+  `${af.recentLinks.length} links`);
+
+ok('best and weakest format named', Boolean(at.bestType) && Boolean(at.worstType),
+  `${at.bestType?.type} ${at.bestType?.perPost} vs ${at.worstType?.type} ${at.worstType?.perPost}`);
+ok('best format really is the best', !at.worstType || at.bestType.perPost >= at.worstType.perPost);
+ok('older-vs-newer trend computed', at.trend !== null,
+  at.trend ? `${at.trend.olderAvg} -> ${at.trend.newerAvg} (${at.trend.direction})` : 'null');
+ok('trend halves cover every post',
+  !at.trend || at.trend.olderCount + at.trend.newerCount === at.posts.length);
+
+// ── chart axes fit the data (item 4) ───────────────────────────────────────
+// Reproduces the tick maths so the regression is caught here rather than by
+// eye: an axis whose top tick sits below the tallest bar is the defect.
+hr('chart axis covers the data');
+const niceTicks = (max, count = 4) => {
+  if (!(max > 0)) return [0];
+  const raw = max / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
+  const steps = Math.max(1, Math.ceil(max / step - 1e-9));
+  return Array.from({ length: steps + 1 }, (_, i) => Number((i * step).toFixed(6)));
+};
+const axisCovers = (max) => niceTicks(max).at(-1) >= max;
+// `peakOf` in charts.js: the real max, falling back to 1 only when empty. The
+// old `Math.max(...values, 1)` floored every fractional series at 1, which is
+// what made the followers-per-post charts look frozen.
+const peakOf = (values) => {
+  const peak = Math.max(...values, 0);
+  return peak > 0 ? peak : 1;
+};
+// niceTicks overshoots by less than half the max, so the tallest bar always
+// fills more than 60% of the plot. A floored axis fails this badly (0.16/1).
+const axisFits = (values) => {
+  const peak = peakOf(values);
+  return peak / niceTicks(peak).at(-1) > 0.6;
+};
+
+const perPost = at.byDay.map((d) => d.perPost);
+const perPostMax = peakOf(perPost);
+ok('weekday followers-per-post axis covers its max', axisCovers(perPostMax),
+  `max ${perPostMax}, top tick ${niceTicks(perPostMax).at(-1)}`);
+ok('weekday axis is not floored at 1', axisFits(perPost),
+  `max ${perPostMax} fills ${Math.round((perPostMax / niceTicks(perPostMax).at(-1)) * 100)}% of the plot`);
+ok('by-type axis is not floored at 1', axisFits(at.byType.map((t) => t.perPost)));
+ok('an all-zero series still gets a usable axis', peakOf([0, 0, 0]) === 1);
+ok('axis covers the max for a spread of values',
+  [0.16, 0.33, 1, 7, 23, 99, 101, 1234, 0.007].every(axisCovers));
+ok('axis fits the data across that spread',
+  [0.16, 0.33, 1, 7, 23, 99, 101, 1234, 0.007].every((v) => axisFits([v])));
+ok('ticks ascend from zero', (() => {
+  const t2 = niceTicks(0.16);
+  return t2[0] === 0 && t2.every((v, i) => i === 0 || v > t2[i - 1]);
+})(), niceTicks(0.16).join(', '));
+
 // ── two-snapshot trends ────────────────────────────────────────────────────
 // Simulate the second upload: same account a month later, having gained two
 // followers, lost one, and picked up a new advertiser.
@@ -156,6 +233,35 @@ const churn = t.churn.at(-1);
 ok('gained followers detected', churn.gained.length === 2, churn.gained.join(', '));
 ok('lost follower detected', churn.lost.length === 1 && churn.lost[0] === dropped.u, churn.lost.join(', '));
 ok('net change correct', churn.net === 1, `net ${churn.net}`);
+ok('retention is the complement of churn',
+  Math.abs(churn.retentionRate - (100 - churn.churnRate)) < 0.11,
+  `churn ${churn.churnRate}% / retention ${churn.retentionRate}%`);
+ok('per-snapshot follower totals recorded',
+  churn.followersAfter === later.followers.length,
+  `${churn.followersBefore} -> ${churn.followersAfter}`);
+
+const followerSeries = t.metrics.find((m) => m.key === 'followers' && m.group === 'counts');
+ok('average growth per upload computed',
+  followerSeries.changePerSnapshot === followerSeries.changeTotal,
+  `${followerSeries.changePerSnapshot}/upload over 1 interval`);
+ok('nfbPercentage now has a trend line',
+  t.metrics.some((m) => m.key === 'nfbPercentage'),
+  t.metrics.filter((m) => m.group === 'ratios').map((m) => m.key).join(', '));
+
+// A history file written before these keys existed must still load.
+const legacy = structuredClone(twoDeep);
+for (const s of legacy.snapshots) {
+  delete s.ratios.nfbPercentage;
+  delete s.ratios.quietFollowerPct;
+}
+let legacyOk = true;
+try {
+  const legacyTrends = analyse(data, parseHistory(serializeHistory(legacy))).trends;
+  legacyOk = legacyTrends.available && !legacyTrends.metrics.some((m) => m.key === 'nfbPercentage');
+} catch {
+  legacyOk = false;
+}
+ok('history written before the new ratios still loads', legacyOk);
 ok('new advertiser detected',
   t.newAdvertisers.includes('A Brand New Advertiser Ltd'), `${t.newAdvertisers.length} new`);
 

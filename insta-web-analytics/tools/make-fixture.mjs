@@ -48,7 +48,12 @@ const FOLLOWING = [...FOLLOWERS.slice(0, 3), 'sixth_sense', 'seventh_seal', 'eig
 
 const files = new Map();
 
+// The Instagram logo sits on every exported page under `files/`; the avatar is
+// the one under `media/`. Both are present here so the parser has to tell them
+// apart rather than taking whichever <img> it meets first.
 files.set('personal_information/personal_information/personal_information.html', page('Personal information',
+  '<img src="files/Instagram-Logo.png" height="28" alt="Instagram" />' +
+  '<img src="media/other/00000000000000000.jpg" class="_a6_o _3-96" />' +
   rec(`<h2 class="_3-95 _2pim _a6-h _a6-i">User Information</h2><div class="_a6-p">${tbl([
     '<tr><td colspan="2" class="_2pin _a6_q">Email<div><div>fixture@example.invalid</div></div></td></tr>',
     '<tr><td colspan="2" class="_2pin _a6_q">Phone Number<div><div>+10000000000</div></div></td></tr>',
@@ -132,6 +137,13 @@ files.set('your_instagram_activity/likes/liked_posts.html', page('Liked posts',
   Array.from({ length: 40 }, (_, i) =>
     interactionRecord(pick(CREATORS), i, [pick(['viral', 'fyp', 'reels', 'comedy'])])).join('')));
 
+// Outgoing story interactions, filed apart from likes by Instagram.
+for (const [name, count] of [['polls', 6], ['quizzes', 3], ['emoji_sliders', 2], ['countdowns', 1]]) {
+  files.set(`your_instagram_activity/story_interactions/${name}.html`, page(name,
+    Array.from({ length: count }, (_, i) =>
+      interactionRecord(pick(CREATORS), 3000 + i, [])).join('')));
+}
+
 files.set('your_instagram_activity/story_interactions/stories_viewed.html', page('Stories viewed',
   Array.from({ length: 120 }, (_, i) =>
     interactionRecord(pick(CREATORS), 1000 + i, [pick(['viral', 'travel', 'food'])])).join('')));
@@ -188,5 +200,18 @@ for (const [path, html] of files) {
   await writeFile(full, html);
 }
 
-console.log(`wrote ${files.size} synthetic files to ${out}`);
+// A real 1x1 JPEG at the avatar path, so the one binary the tool pulls out of
+// the archive is exercised rather than assumed. Everything else under media/
+// stays absent — the point is that only this file is ever decompressed.
+const AVATAR = 'media/other/00000000000000000.jpg';
+const avatarFull = join(out, AVATAR);
+await mkdir(dirname(avatarFull), { recursive: true });
+await writeFile(avatarFull, Buffer.from(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+  'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+  'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64',
+));
+
+console.log(`wrote ${files.size} synthetic files + 1 image to ${out}`);
 console.log('All names, handles, numbers and coordinates are fabricated.');

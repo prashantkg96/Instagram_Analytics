@@ -84,7 +84,13 @@ export function buildSnapshot(data, results) {
       fanPercentage: results.audience.insights.fanPercentage,
       mutualPercentage: results.audience.insights.mutualPercentage,
       followerFollowingRatio: results.audience.insights.followerFollowingRatio,
+      // The one ratio that names an action ("unfollow these") had no trend line
+      // until now. Older history files simply lack the key — `series()` skips
+      // null points and the CSV writer unions the keys it finds, so a file
+      // written before this existed still loads.
+      nfbPercentage: results.audience.insights.nfbPercentage,
       oneSidedFollowPct: results.affinity.oneSidedPct,
+      quietFollowerPct: results.affinity.quietPct,
       adSharePct: results.ads.adShare,
       lateNightPct: results.consumption.lateNight.pct,
       sentPct: results.messages.sentPct,

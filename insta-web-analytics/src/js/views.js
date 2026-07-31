@@ -6,6 +6,7 @@ import {
 import {
   columnChart, stackedChart, lineChart, barsChart, heatmapChart, sparkline,
 } from './charts.js';
+import { goTo } from './nav.js';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const hourLabel = (h24) => `${((h24 + 11) % 12) + 1}${h24 < 12 ? 'am' : 'pm'}`;
@@ -15,6 +16,47 @@ const peopleColumns = [
   { key: 'name', label: 'Name' },
   { key: 'at', label: 'Since', render: (v) => shortDate(v) },
 ];
+
+/** Wraps a card so an overview tile can scroll straight to it. */
+const anchored = (id, node) => h('div', { id }, node);
+
+/**
+ * Link one of your own posts.
+ *
+ * The export gives no permalink for your own media, so the destination is your
+ * profile grid and the label says when the post went out — enough to find it.
+ */
+function postLink(username, caption, row) {
+  const text = caption || `${shortDate(row.at)} · ${row.type}`;
+  if (!username) return caption || h('span', { class: 'muted' }, '(none)');
+  return h('a', {
+    href: `https://www.instagram.com/${encodeURIComponent(username)}/`,
+    target: '_blank',
+    rel: 'noopener noreferrer',
+    title: 'Opens your profile grid — Instagram does not include post links in an export',
+    class: caption ? null : 'muted',
+  }, text);
+}
+
+/**
+ * `lat, lng` as one linked cell — two raw float columns helped nobody.
+ *
+ * Rounded rather than padded: this data mixes metre-precise points
+ * (12.972867074498) with country centroids (15), and padding the latter to
+ * "15.00000" would imply a precision the record does not have. The link always
+ * carries the exact value.
+ */
+function coordsCell(row) {
+  if (typeof row.lat !== 'number' || typeof row.lng !== 'number') return '—';
+  const trim = (n) => String(Math.round(n * 1e5) / 1e5);
+  const shown = `${trim(row.lat)}, ${trim(row.lng)}`;
+  return h('a', {
+    href: `https://www.google.com/maps?q=${row.lat},${row.lng}`,
+    target: '_blank',
+    rel: 'noopener noreferrer',
+    title: 'Open this exact spot in Google Maps',
+  }, shown);
+}
 
 const countTable = (rows, keyLabel, valueLabel) => () =>
   table(
@@ -46,8 +88,15 @@ function profileHeader(data) {
 
   return h('header', { class: 'profile-head' },
     h('div', { class: 'profile-id' },
-      h('h2', {}, p.name || p.username || 'Your account'),
-      p.name && p.username ? h('p', { class: 'profile-handle' }, `@${p.username}`) : null,
+      // Read straight out of the archive as a blob: URL — decorative, since the
+      // name it sits beside already carries the identity.
+      p.avatarUrl
+        ? h('img', { class: 'profile-avatar', src: p.avatarUrl, alt: '', width: 64, height: 64 })
+        : null,
+      h('div', {},
+        h('h2', {}, p.name || p.username || 'Your account'),
+        p.name && p.username ? h('p', { class: 'profile-handle' }, `@${p.username}`) : null,
+      ),
     ),
     h('div', { class: 'profile-chips' }, ...chips),
     h('p', { class: 'profile-generated' }, `Generated ${shortDate(data.meta.generatedAt)}`),
@@ -86,6 +135,36 @@ export function overview(data, results) {
       }),
       tile('Mutuals', a.mutuals, { sub: `${pct(a.mutualPercentage)} of followers` }),
       tile('Follow-back rate', pct(a.followBackRate), { sub: `${a.notFollowingBack} don't follow back` }),
+    ),
+  ));
+
+  // Every number here has a list behind it, so each tile is a way in rather
+  // than a dead end — the reader should not have to hunt for the names.
+  frag.append(section('Your relationships', 'Open any of these to see the accounts behind the number.',
+    h('div', { class: 'grid cols-4' },
+      tile("Don't follow you back", a.notFollowingBack, {
+        goodWhenUp: false,
+        onClick: () => goTo('audience', 'list-not-following-back'),
+        hint: 'See who →',
+      }),
+      tile('Fans', a.fans, {
+        sub: "follow you, you don't follow back",
+        onClick: () => goTo('audience', 'list-fans'),
+        hint: 'See who →',
+      }),
+      change
+        ? tile('Unfollowed you', change.unfollowers.length, {
+            goodWhenUp: false,
+            onClick: () => goTo('audience', 'list-unfollowers'),
+            hint: 'See who →',
+          })
+        : tile('Unfollowed you', '—', { sub: 'needs a second upload' }),
+      change
+        ? tile('New followers', change.newFollowers.length, {
+            onClick: () => goTo('audience', 'list-new-followers'),
+            hint: 'See who →',
+          })
+        : tile('New followers', '—', { sub: 'needs a second upload' }),
     ),
   ));
 
@@ -157,10 +236,12 @@ export function audienceView(data, results) {
       tile('Follower / following', r.insights.followerFollowingRatio),
     ),
     h('div', { class: 'grid cols-2 stack' },
-      card("Don't follow you back", `${r.notFollowingBack.length} accounts you follow that don't follow you.`,
-        table(peopleColumns, r.notFollowingBack, { filter: true })),
-      card('Fans', `${r.fans.length} accounts following you that you don't follow back.`,
-        table(peopleColumns, r.fans, { filter: true })),
+      anchored('list-not-following-back',
+        card("Don't follow you back", `${r.notFollowingBack.length} accounts you follow that don't follow you.`,
+          table(peopleColumns, r.notFollowingBack, { filter: true }))),
+      anchored('list-fans',
+        card('Fans', `${r.fans.length} accounts following you that you don't follow back.`,
+          table(peopleColumns, r.fans, { filter: true }))),
     ),
   ));
 
@@ -173,8 +254,10 @@ export function audienceView(data, results) {
         tile('Retention', pct(r.change.retentionRate)),
       ),
       h('div', { class: 'grid cols-2 stack' },
-        card('Who unfollowed you', null, table(peopleColumns, r.change.unfollowers, { filter: true })),
-        card('Who started following', null, table(peopleColumns, r.change.newFollowers, { filter: true })),
+        anchored('list-unfollowers',
+          card('Who unfollowed you', null, table(peopleColumns, r.change.unfollowers, { filter: true }))),
+        anchored('list-new-followers',
+          card('Who started following', null, table(peopleColumns, r.change.newFollowers, { filter: true }))),
       ),
     ));
   }
@@ -236,6 +319,23 @@ export function growthView(data, results) {
         sub: at.bestHour ? `${at.bestHour.perPost} followers per post` : null,
       }),
     ),
+    h('div', { class: 'grid cols-3' },
+      tile('Best format', at.bestType ? at.bestType.type : '—', {
+        sub: at.bestType ? `${at.bestType.perPost} per post across ${at.bestType.posts}` : null,
+      }),
+      tile('Weakest format', at.worstType ? at.worstType.type : '—', {
+        sub: at.worstType ? `${at.worstType.perPost} per post across ${at.worstType.posts}` : null,
+        goodWhenUp: false,
+      }),
+      // Older half of your posting history against the newer half — whether
+      // what you post now pulls more people in than what you used to post.
+      at.trend
+        ? tile('Recent vs earlier', `${at.trend.newerAvg} per post`, {
+            delta: at.trend.change,
+            deltaLabel: `vs ${at.trend.olderAvg} earlier`,
+          })
+        : tile('Recent vs earlier', '—', { sub: 'needs more posts to compare' }),
+    ),
   ));
 
   if (at.confidence === 'low') {
@@ -256,7 +356,15 @@ export function growthView(data, results) {
         [
           { key: 'at', label: 'Published', render: (v) => shortDate(v) },
           { key: 'type', label: 'Type' },
-          { key: 'caption', label: 'Caption', render: (v) => v || h('span', { class: 'muted' }, '(none)') },
+          {
+            key: 'caption',
+            label: 'Caption',
+            // Your own posts carry no permalink anywhere in the export — no URL,
+            // no shortcode, no media ID — so this opens your grid rather than
+            // pretending to deep-link. Captionless posts still need a label, or
+            // the anchor would be an invisible click target.
+            render: (v, row) => postLink(data.profile.username, v, row),
+          },
           { key: 'lastTouch', label: 'Followers', num: true },
           { key: 'gained24h', label: '24h', num: true },
           { key: 'gained7d', label: '7d', num: true },
@@ -376,8 +484,7 @@ export function contentView(data, results) {
         [
           { key: 'at', label: 'When', render: (v) => shortDate(v) },
           { key: 'place', label: 'Place' },
-          { key: 'lat', label: 'Latitude', num: true },
-          { key: 'lng', label: 'Longitude', num: true },
+          { key: 'lat', label: 'Coordinates', num: true, render: (v, row) => coordsCell(row) },
           { key: 'caption', label: 'Caption' },
         ],
         c.geo,
@@ -403,8 +510,35 @@ export function engagementView(data, results) {
       }),
       tile('Likes given', data.engagement.likes),
       tile('Comments written', data.engagement.comments),
+      tile('Story responses', af.storyResponseCount, {
+        sub: 'polls, quizzes, sliders, countdowns',
+      }),
     ),
   ));
+
+  if (af.recentLinks.length) {
+    frag.append(section('What you interacted with',
+      'The most recent ' + af.recentLinks.length + ' — and the only real post links in your data. ' +
+      'Instagram records a URL for other people\'s posts because it has to identify them; your own ' +
+      'posts carry no link of any kind.',
+      card(null, null, table(
+        [
+          { key: 'at', label: 'When', render: (v) => shortDate(v) },
+          { key: 'kind', label: 'What' },
+          { key: 'u', label: 'Creator', render: (v) => handle(v) },
+          {
+            key: 'url',
+            label: 'Post',
+            render: (v) => (v
+              ? h('a', { href: v, target: '_blank', rel: 'noopener noreferrer' }, 'Open ↗')
+              : '—'),
+          },
+        ],
+        af.recentLinks,
+        { filter: true },
+      )),
+    ));
+  }
 
   // Two lists, not one merged score. Deliberate interactions reach back years
   // while view history reaches back days, so a single ranking simply buried
@@ -466,6 +600,40 @@ export function engagementView(data, results) {
         { filter: true },
       )),
     ),
+  ));
+
+  frag.append(section('Quiet followers',
+    'Followers whose content has never appeared in anything you did — no like, comment, save or view.',
+    h('div', { class: 'grid cols-3' },
+      tile('Quiet followers', af.quietCount, {
+        sub: `${pct(af.quietPct)} of your followers`,
+        goodWhenUp: null,
+      }),
+      tile('Followers you engage with', Math.max(0, results.audience.insights.followers - af.quietCount), {
+        sub: 'their content reaches you',
+      }),
+      // Quiet *and* followed back is the pointed subset: a following slot spent
+      // on someone whose posts you have never once looked at.
+      tile('Quiet, and you follow back', af.quietFollowers.filter((p) => p.youFollow).length, {
+        sub: 'you follow them, you never engage',
+        goodWhenUp: false,
+      }),
+    ),
+    notice(
+      '<strong>This is not "who ignores you".</strong> That would need the likes and comments your posts ' +
+      'received, and Instagram puts no incoming engagement in an export at all — every engagement file it ' +
+      'contains records something <em>you</em> did. This list is the direction the data supports.',
+    ),
+    card(null, null, table(
+      [
+        { key: 'u', label: 'Account', render: (v) => handle(v) },
+        { key: 'name', label: 'Name' },
+        { key: 'at', label: 'Following you since', render: (v) => shortDate(v) },
+        { key: 'youFollow', label: 'You follow back', render: (v) => (v ? 'yes' : '—') },
+      ],
+      af.quietFollowers,
+      { filter: true },
+    )),
   ));
   return frag;
 }
@@ -681,16 +849,51 @@ export function trendsView(data, results) {
     return frag;
   }
 
-  frag.append(section('Trends',
-    `${t.snapshots} snapshots, ${shortDate(t.span.from)} to ${shortDate(t.span.to)}.`,
+  const signed = (v) => (v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`);
+  const counted = (key) => t.metrics.find((m) => m.key === key && m.group === 'counts') ?? null;
+  const followersM = counted('followers');
+  const followingM = counted('following');
+
+  frag.append(section('Growth', `Across ${t.snapshots} snapshots, ${shortDate(t.span.from)} to ${shortDate(t.span.to)}.`,
+    h('div', { class: 'grid cols-4' },
+      tile('Follower growth', signed(followersM?.changeTotal), { sub: 'since your first upload' }),
+      // Per upload rather than in total: the figure that stays comparable as
+      // snapshots accumulate, and the one the desktop app reports.
+      tile('Average per upload', signed(followersM?.changePerSnapshot), {
+        sub: `over ${t.snapshots - 1} interval${t.snapshots === 2 ? '' : 's'}`,
+      }),
+      tile('Following growth', signed(followingM?.changeTotal), { goodWhenUp: null }),
+      tile('Average per upload', signed(followingM?.changePerSnapshot), { goodWhenUp: null }),
+    ),
+  ));
+
+  frag.append(section('Every upload, side by side',
+    'One row per interval between snapshots — what each upload changed.',
+    card(null, null, table(
+      [
+        { key: 'to', label: 'Upload', render: (v) => shortDate(v) },
+        { key: 'followersAfter', label: 'Followers', num: true },
+        { key: 'net', label: 'Δ followers', num: true, render: (v) => signed(v) },
+        { key: 'followingAfter', label: 'Following', num: true },
+        { key: 'netFollowing', label: 'Δ following', num: true, render: (v) => signed(v) },
+        { key: 'churnRate', label: 'Churn', num: true, render: (v) => pct(v) },
+        { key: 'retentionRate', label: 'Retention', num: true, render: (v) => pct(v) },
+      ],
+      t.churn,
+    )),
+  ));
+
+  frag.append(section('Every metric',
+    null,
     card(null, null, table(
       [
         { key: 'key', label: 'Metric' },
         { key: 'group', label: 'Group' },
         { key: 'first', label: 'First', num: true, render: (v) => fmt(v) },
         { key: 'last', label: 'Latest', num: true, render: (v) => fmt(v) },
-        { key: 'change', label: 'Since previous', num: true, render: (v) => (v === null ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`) },
-        { key: 'changeTotal', label: 'Overall', num: true, render: (v) => (v === null ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`) },
+        { key: 'change', label: 'Since previous', num: true, render: (v) => signed(v) },
+        { key: 'changeTotal', label: 'Overall', num: true, render: (v) => signed(v) },
+        { key: 'changePerSnapshot', label: 'Per upload', num: true, render: (v) => signed(v) },
         {
           key: 'points',
           label: 'Trend',
@@ -705,7 +908,7 @@ export function trendsView(data, results) {
   frag.append(section('Follower movement', null,
     ...t.churn.map((c) => card(
       `${shortDate(c.from)} → ${shortDate(c.to)}`,
-      `Net ${c.net > 0 ? '+' : ''}${c.net} · churn ${pct(c.churnRate)}`,
+      `Net ${c.net > 0 ? '+' : ''}${c.net} · churn ${pct(c.churnRate)} · retention ${pct(c.retentionRate)}`,
       h('div', { class: 'grid cols-2' },
         card('Gained', null, c.gained.length
           ? h('div', {}, ...c.gained.map((u) => h('div', {}, handle(u))))

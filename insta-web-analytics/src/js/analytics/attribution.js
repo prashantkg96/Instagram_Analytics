@@ -105,6 +105,28 @@ export function attribution(data, { windowDays = 7 } = {}) {
 
   const attributed = rows.reduce((s, r) => s + r.lastTouch, 0);
 
+  // Older half of your posting history against the newer half — the desktop
+  // app's engagement_trend, asked of followers gained because that is the
+  // outcome this data records. Needs enough posts either side to mean anything.
+  const chronological = rows.slice().sort((a, b) => a.at.localeCompare(b.at));
+  const mean = (list) => (list.length
+    ? Math.round((list.reduce((s, r) => s + r.lastTouch, 0) / list.length) * 100) / 100
+    : null);
+  const half = Math.floor(chronological.length / 2);
+  const olderAvg = mean(chronological.slice(0, half));
+  const newerAvg = mean(chronological.slice(half));
+  const trend = half >= 3 && olderAvg !== null && newerAvg !== null
+    ? {
+        olderAvg,
+        newerAvg,
+        olderCount: half,
+        newerCount: chronological.length - half,
+        change: Math.round((newerAvg - olderAvg) * 100) / 100,
+        direction: newerAvg > olderAvg ? 'up' : newerAvg < olderAvg ? 'down' : 'flat',
+        splitAt: chronological[half]?.at ?? null,
+      }
+    : null;
+
   // With a handful of followers the ranking is noise. Say so rather than
   // letting the UI present it as insight.
   const confidence = followers.length < 30 || posts.length < 5
@@ -123,6 +145,11 @@ export function attribution(data, { windowDays = 7 } = {}) {
     byDay,
     byHour,
     byType: byType.sort((a, b) => b.perPost - a.perPost),
+    // Named rather than left as "index 0 and the last one" — the desktop app
+    // reports these as scalars and they read better on a tile.
+    bestType: byType[0] ?? null,
+    worstType: byType.length > 1 ? byType.at(-1) : null,
+    trend,
     confidence,
     sample: { posts: posts.length, followers: followers.length },
   };

@@ -11,13 +11,14 @@
 //
 // Weights are deliberate: writing a comment is a stronger signal of interest
 // than a like. Views are NOT in this scale — see below.
-const WEIGHTS = { comment: 4, save: 3, like: 2, storyLike: 2, likeComment: 1 };
+const WEIGHTS = { comment: 4, save: 3, like: 2, storyLike: 2, storyResponse: 2, likeComment: 1 };
 
 function add(map, handle, kind, at, weight) {
   if (!handle) return;
   const key = handle.toLowerCase();
   const row = map.get(key) ?? {
-    u: handle, comment: 0, save: 0, like: 0, storyLike: 0, likeComment: 0, view: 0, score: 0, last: null,
+    u: handle, comment: 0, save: 0, like: 0, storyLike: 0, storyResponse: 0,
+    likeComment: 0, view: 0, score: 0, last: null,
   };
   row[kind]++;
   row.score += weight;
@@ -26,7 +27,9 @@ function add(map, handle, kind, at, weight) {
 }
 
 export function affinity(data) {
-  const { likes, comments, saved, storyLikes, likedComments } = data.engagement;
+  const {
+    likes, comments, saved, storyLikes, likedComments, storyResponses = [],
+  } = data.engagement;
   const { storiesViewed, postsViewed, videosWatched } = data.consumption;
   const cov = data.coverage ?? {};
 
@@ -44,6 +47,7 @@ export function affinity(data) {
   for (const x of saved) add(engagedMap, x.u, 'save', x.at, WEIGHTS.save);
   for (const x of storyLikes) add(engagedMap, x.u, 'storyLike', x.at, WEIGHTS.storyLike);
   for (const x of likedComments) add(engagedMap, x.u, 'likeComment', x.at, WEIGHTS.likeComment);
+  for (const x of storyResponses) add(engagedMap, x.u, 'storyResponse', x.at, WEIGHTS.storyResponse);
 
   const watchedMap = new Map();
   for (const x of [...storiesViewed, ...postsViewed, ...videosWatched]) {
@@ -74,6 +78,35 @@ export function affinity(data) {
     .filter((p) => !engagedKeys.has(p.u.toLowerCase()))
     .map((p) => ({ ...p, everSeen: seenKeys.has(p.u.toLowerCase()) }));
 
+  // "Quiet followers" — followers you have never engaged with in any way.
+  //
+  // NOT the desktop app's ghost followers, and the label says so. That metric
+  // asks who ignores *you*, which needs the likes and comments your posts
+  // received; the export contains no incoming engagement whatsoever, so it
+  // cannot be computed here at any fidelity. This is the direction the data
+  // does support: followers whose content never appears in anything you did.
+  const quietFollowers = data.followers
+    .filter((p) => !seenKeys.has(p.u.toLowerCase()))
+    .map((p) => ({ ...p, youFollow: followingSet.has(p.u.toLowerCase()) }));
+
+  // The only real post links anywhere in the export.
+  //
+  // Your own media carries no permalink — no URL, no shortcode, no media ID —
+  // but everything you interacted with does, because the record has to identify
+  // someone else's post. Capped at the recent tail; the full like history runs
+  // to thousands of rows and none of the older ones are worth shipping to the
+  // page.
+  const recentLinks = [
+    ...likes.map((x) => ({ ...x, kind: 'like' })),
+    ...saved.map((x) => ({ ...x, kind: 'save' })),
+    ...storyLikes.map((x) => ({ ...x, kind: 'story like' })),
+    ...storyResponses,
+  ]
+    .filter((x) => x.at && x.url)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, 300)
+    .map((x) => ({ kind: x.kind, u: x.u, at: x.at, url: x.url }));
+
   const unreciprocated = all
     .filter((r) => r.interactions >= 3 && !r.followsYou)
     .slice(0, 100);
@@ -98,6 +131,15 @@ export function affinity(data) {
     oneSidedPct: data.following.length
       ? Math.round((oneSidedFollows.length / data.following.length) * 1000) / 10
       : 0,
+    recentLinks,
+    storyResponseCount: storyResponses.length,
+
+    quietFollowers,
+    quietCount: quietFollowers.length,
+    quietPct: data.followers.length
+      ? Math.round((quietFollowers.length / data.followers.length) * 1000) / 10
+      : 0,
+
     unreciprocated,
     mutualEngaged,
     weights: WEIGHTS,

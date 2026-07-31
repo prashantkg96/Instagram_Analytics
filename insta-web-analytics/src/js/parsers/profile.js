@@ -15,6 +15,31 @@ function first(files, pattern) {
   return all[0] ?? null;
 }
 
+// Anchored to `media/` so the Instagram logo that every exported page carries
+// under `files/` can never be mistaken for the account's picture.
+const PHOTO_SRC = /<img[^>]+src="((?:[^"]*\/)?media\/[^"]+\.(?:jpe?g|png|webp|gif))"/i;
+
+/**
+ * Where the profile picture lives inside the archive.
+ *
+ * It is markup rather than a field value — both files embed it as an
+ * `<img src="media/other/….jpg">` — so it has to be read from the raw HTML
+ * instead of from a parsed record. The bytes are fetched separately by the
+ * worker; this only resolves the path.
+ */
+function profilePhotoPath(files) {
+  for (const pattern of [
+    /personal_information\/personal_information\.html$/i,
+    /media\/profile_photos\.html$/i,
+  ]) {
+    for (const doc of pickAll(files, pattern)) {
+      const match = PHOTO_SRC.exec(doc.html);
+      if (match) return match[1].replace(/^\.?\//, '');
+    }
+  }
+  return null;
+}
+
 export function parseProfile(files) {
   const info = first(files, /personal_information\/personal_information\.html$/i);
   const account = first(files, /instagram_profile_information\.html$/i);
@@ -55,6 +80,10 @@ export function parseProfile(files) {
   }
 
   return {
+    // A path into the ZIP, not image data. Resolved to a blob: URL in the page
+    // and never written to a snapshot — history.js allow-lists what it keeps.
+    photoPath: profilePhotoPath(files),
+
     username: info ? field(info, 'Username') ?? null : null,
     name: info ? field(info, 'Name') ?? null : null,
     bio: info ? field(info, 'Bio') ?? null : null,

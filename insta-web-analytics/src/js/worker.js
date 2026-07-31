@@ -5,12 +5,31 @@
 // the UI for seconds on the main thread. It is also why scan.js walks the
 // markup directly instead of using DOMParser, which does not exist here.
 
-import { extractText, isDataFile, listEntries } from './unzip.js';
+import { extractText, extractBinary, isDataFile, listEntries } from './unzip.js';
 import { parseExport } from './parsers/index.js';
 import { analyse, trends } from './analytics/index.js';
 import { buildSnapshot, mergeSnapshot, parseHistory } from './history.js';
 
 const post = (message) => self.postMessage(message);
+
+const MIME = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  webp: 'image/webp', gif: 'image/gif',
+};
+
+/**
+ * The profile picture — the only binary worth taking out of the archive.
+ *
+ * Everything else under `media/` stays compressed and unread; this is one file,
+ * typically under 200 KB, and it never leaves the page.
+ */
+async function readAvatar(file, path) {
+  if (!path) return null;
+  const type = MIME[path.split('.').pop()?.toLowerCase()];
+  if (!type) return null;
+  const bytes = await extractBinary(file, path);
+  return bytes ? { bytes, type } : null;
+}
 
 /**
  * Only the fields the views actually read. The full dataset holds thousands of
@@ -86,6 +105,7 @@ self.onmessage = async ({ data: message }) => {
     post({
       type: 'done',
       summary: summarize(parsed),
+      avatar: await readAvatar(message.file, parsed.profile.photoPath),
       results,
       history: merged,
       stats: {

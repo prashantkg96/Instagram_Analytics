@@ -194,6 +194,36 @@ export async function extractText(blob, { include, onProgress } = {}) {
 }
 
 /**
+ * Decompress exactly one entry and return its raw bytes.
+ *
+ * Deliberately separate from `extractText`, which decodes UTF-8 and is filtered
+ * by `isDataFile`. The only caller wants the profile photo — a binary living
+ * under the `media/` prefix that `isDataFile` excludes — and widening that
+ * filter would pull every photo and video in the archive into memory.
+ *
+ * @param {Blob} blob
+ * @param {string} path  exact entry name, as returned by `listEntries`
+ * @returns {Promise<Uint8Array|null>} null when the entry is absent or unreadable
+ */
+export async function extractBinary(blob, path) {
+  if (!path) return null;
+  const wanted = String(path).replace(/^\.?\//, '').toLowerCase();
+  const norm = (name) => name.replace(/^\.?\//, '').toLowerCase();
+  const entries = await listEntries(blob);
+  // Paths inside the HTML are relative to the export root, but the archive may
+  // nest everything under a top-level folder, so fall back to a suffix match.
+  const entry = entries.find((e) => norm(e.name) === wanted)
+    ?? entries.find((e) => norm(e.name).endsWith(`/${wanted}`));
+  if (!entry) return null;
+  try {
+    return await readEntry(blob, entry);
+  } catch (err) {
+    console.warn(`Could not read ${path}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Paths worth decompressing: the data files, never the media blobs.
  *
  * The exclusion is anchored to the archive root on purpose. `media/` at the

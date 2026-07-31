@@ -302,8 +302,15 @@ a { color: var(--series-1); }
   gap: 8px 16px;
   margin: 24px 0 18px;
 }
-.profile-id { grid-column: 1; }
+/* Avatar sits inside the identity block rather than in its own grid column, so
+ * the header collapses to exactly its old layout when there is no picture. */
+.profile-id { grid-column: 1; display: flex; align-items: center; gap: 14px; }
 .profile-id h2 { font-size: 1.5rem; letter-spacing: -0.01em; }
+.profile-avatar {
+  width: 64px; height: 64px; flex: none;
+  border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--border); background: var(--surface-2);
+}
 .profile-handle {
   margin: 2px 0 0; font-family: var(--mono);
   font-size: 0.86rem; color: var(--text-secondary);
@@ -345,15 +352,34 @@ a { color: var(--series-1); }
 .tile .delta.down { color: var(--critical); }
 .tile .delta.flat { color: var(--text-muted); }
 
+/* Tiles that lead somewhere are real buttons, so they need the text alignment
+ * and cursor a button does not inherit from .card. */
+.tile-link {
+  text-align: left; font: inherit; cursor: pointer; width: 100%;
+  color: inherit; appearance: none;
+}
+.tile-link:hover { border-color: var(--series-1); }
+.tile-link:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.tile-hint { font-size: 0.76rem; color: var(--series-1); margin-top: 2px; }
+
 .hero { font-size: 3rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
 
 /* ── tables ─────────────────────────────────────────────────────────── */
-.tablewrap { overflow-x: auto; }
+/*
+ * A capped, scrolling viewport rather than a table as tall as its row count —
+ * several of these run to 100 rows and pushed everything below them off screen.
+ *
+ * It also makes `position: sticky` on the header work. With no vertical scroll
+ * container the header stuck to the *viewport* and slid under the topbar; now
+ * it sticks to this box, which is what it was always meant to do.
+ */
+.tablewrap { overflow: auto; max-height: 26rem; overscroll-behavior: contain; }
 table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--gridline); }
 th {
   font-weight: 600; color: var(--text-secondary); font-size: 0.78rem;
-  position: sticky; top: 0; background: var(--surface-1); cursor: pointer; white-space: nowrap;
+  position: sticky; top: 0; z-index: 1; background: var(--surface-1);
+  cursor: pointer; white-space: nowrap;
 }
 th[aria-sort='ascending']::after { content: ' ↑'; }
 th[aria-sort='descending']::after { content: ' ↓'; }
@@ -370,8 +396,15 @@ tbody tr:hover { background: color-mix(in srgb, var(--series-1) 5%, transparent)
 .empty { color: var(--text-muted); font-size: 0.85rem; padding: 12px 0; }
 
 /* ── chart chrome ───────────────────────────────────────────────────── */
+/*
+ * Charts are repainted at the host's measured width (see `responsive` in
+ * charts.js), so one user unit is one pixel and this font-size is the size the
+ * label actually renders at. Before that it was scaled down with the viewBox to
+ * roughly 4.5px in a two-up card.
+ */
+.chart-host { width: 100%; }
 .chart { width: 100%; display: block; overflow: visible; }
-.chart text { font-family: var(--sans); font-size: 10px; fill: var(--text-muted); }
+.chart text { font-family: var(--sans); font-size: 13px; fill: var(--text-muted); }
 .chart .axis-line { stroke: var(--baseline); stroke-width: 1; }
 .chart .grid-line { stroke: var(--gridline); stroke-width: 1; }
 
@@ -429,6 +462,9 @@ tbody tr:hover { background: color-mix(in srgb, var(--series-1) 5%, transparent)
 .finding h4 { margin: 0 0 3px; font-size: 0.88rem; font-weight: 600; }
 .finding p { margin: 0 0 4px; font-size: 0.83rem; color: var(--text-secondary); }
 .finding code { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); word-break: break-all; }
+/* The privacy notice lists full export paths. Unbroken, the longest of them
+ * widened the whole page by ~50px on a 360px screen. */
+.notice code { word-break: break-all; overflow-wrap: anywhere; }
 
 .pill {
   display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px;

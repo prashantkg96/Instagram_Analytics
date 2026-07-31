@@ -90,40 +90,104 @@ function hoverable(node, html) {
   node.addEventListener('blur', hideTip);
 }
 
+/**
+ * Ticks from 0 to the first round step at or above `max`.
+ *
+ * Running only to the last step *below* max is what made the axis look frozen:
+ * with max = 0.33 and a 0.1 step the ticks stopped at 0.3, so the tallest bar
+ * rose above the final gridline and the labels never described the data.
+ */
 function niceTicks(max, count = 4) {
-  if (max <= 0) return [0];
+  if (!(max > 0)) return [0];
   const raw = max / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
-  const ticks = [];
-  for (let v = 0; v <= max + step * 0.001; v += step) ticks.push(Math.round(v * 1000) / 1000);
-  return ticks;
+  // Count the steps rather than accumulating `v += step`, which drifts on
+  // fractional steps (0.1 + 0.1 + 0.1 = 0.30000000000000004).
+  const steps = Math.max(1, Math.ceil(max / step - 1e-9));
+  return Array.from({ length: steps + 1 }, (_, i) => Number((i * step).toFixed(6)));
 }
 
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : String(n ?? ''));
 
+/**
+ * The largest value a chart has to reach, falling back to 1 only when there is
+ * nothing to plot.
+ *
+ * Writing `Math.max(...values, 1)` instead — which is what every chart used to
+ * do — pins the axis at 1 for any series whose values are all fractional. The
+ * followers-per-post charts peak around 0.16, so they drew a fixed 0–1 axis
+ * with bars a sixth of the height whatever the data said: the "static y axis".
+ */
+const peakOf = (values) => {
+  const peak = Math.max(...values, 0);
+  return peak > 0 ? peak : 1;
+};
+
+/** How many x labels the plot area can hold before they start touching. */
+const labelBudget = (width, pad) =>
+  Math.max(3, Math.floor((width - pad.left - pad.right) / 56));
+
+/**
+ * Draws the gridlines and returns a scale anchored to the TOP TICK.
+ *
+ * Scaling by the raw max instead pins the tallest bar to the plot ceiling
+ * regardless of where the gridlines fall, so every chart looked identically
+ * "full" and the axis appeared not to react to the data.
+ */
 function yAxis(svg, { top, bottom, left, right }, max) {
   const ticks = niceTicks(max);
-  const scale = (v) => bottom - (max ? (v / max) * (bottom - top) : 0);
+  const axisMax = ticks.at(-1) || 1;
+  const scale = (v) => bottom - (v / axisMax) * (bottom - top);
   for (const tick of ticks) {
     const y = scale(tick);
     el('line', { class: 'grid-line', x1: left, x2: right, y1: y, y2: y }, svg);
     el('text', { x: left - 6, y: y + 3.5, 'text-anchor': 'end' }, svg).textContent = fmt(tick);
   }
-  return { scale, max };
+  return { scale, max: axisMax };
+}
+
+/**
+ * Redraw a chart at its container's real pixel width.
+ *
+ * A chart drawn in fixed user units is scaled to the card by the viewBox — and
+ * that scales the TEXT with it. A 720-unit chart in a 340px card renders its
+ * 10-unit labels at 4.7px, which is the whole reason axis labels were
+ * unreadable. Painting at the measured width keeps one unit equal to one pixel,
+ * so a 13px label is 13px on a phone and on a wide desktop card alike.
+ */
+function responsive(draw, { min = 280 } = {}) {
+  const host = document.createElement('div');
+  host.className = 'chart-host';
+  let painted = 0;
+  const paint = (raw) => {
+    const width = Math.max(min, Math.round(raw));
+    if (width === painted) return;
+    painted = width;
+    host.replaceChildren(draw(width));
+  };
+  paint(min);
+  // A panel that is still detached (or in a hidden tab) measures 0; the
+  // observer fires again with the real width once it is laid out.
+  const observer = new ResizeObserver((entries) => paint(entries[0].contentRect.width));
+  requestAnimationFrame(() => observer.observe(host));
+  return host;
 }
 
 /**
  * Columns for a single series.
  * @param {{key:string,count:number}[]} data
  */
-export function columnChart(data, { height = 190, label = 'value', highlight = null } = {}) {
-  const width = 720;
+export function columnChart(data, opts = {}) {
+  return responsive((width) => drawColumns(data, { ...opts, width }));
+}
+
+function drawColumns(data, { height = 190, label = 'value', highlight = null, width = 720 } = {}) {
   const pad = { top: 12, right: 8, bottom: 26, left: 44 };
   const svg = svgRoot(width, height);
   if (!data.length) return svg;
 
-  const max = Math.max(...data.map((d) => d.count), 1);
+  const max = peakOf(data.map((d) => d.count));
   const { scale } = yAxis(svg, { ...pad, right: width - pad.right, bottom: height - pad.bottom }, max);
   const band = (width - pad.left - pad.right) / data.length;
   // Cap the bar so the band keeps some air, and leave the 2px surface gap.
@@ -154,8 +218,9 @@ export function columnChart(data, { height = 190, label = 'value', highlight = n
     y1: height - pad.bottom, y2: height - pad.bottom,
   }, svg);
 
-  // Thin the x labels so they never collide.
-  const every = Math.ceil(data.length / 12);
+  // Thin the x labels so they never collide. The budget is derived from the
+  // real width, since that is now the phone width on a narrow screen.
+  const every = Math.max(1, Math.ceil(data.length / labelBudget(width, pad)));
   data.forEach((d, i) => {
     if (i % every) return;
     el('text', {
@@ -170,14 +235,17 @@ export function columnChart(data, { height = 190, label = 'value', highlight = n
  * @param {object[]} rows
  * @param {{key:string,name:string}[]} keys
  */
-export function stackedChart(rows, keys, { height = 210, xKey = 'month' } = {}) {
-  const width = 720;
+export function stackedChart(rows, keys, opts = {}) {
+  return responsive((width) => drawStacked(rows, keys, { ...opts, width }));
+}
+
+function drawStacked(rows, keys, { height = 210, xKey = 'month', width = 720 } = {}) {
   const pad = { top: 12, right: 8, bottom: 26, left: 44 };
   const svg = svgRoot(width, height);
   if (!rows.length) return svg;
 
   const totals = rows.map((r) => keys.reduce((s, k) => s + (r[k.key] ?? 0), 0));
-  const max = Math.max(...totals, 1);
+  const max = peakOf(totals);
   const { scale } = yAxis(svg, { ...pad, right: width - pad.right, bottom: height - pad.bottom }, max);
   const band = (width - pad.left - pad.right) / rows.length;
   const barWidth = Math.max(1, Math.min(24, band - GAP));
@@ -211,7 +279,7 @@ export function stackedChart(rows, keys, { height = 210, xKey = 'month' } = {}) 
     y1: height - pad.bottom, y2: height - pad.bottom,
   }, svg);
 
-  const every = Math.ceil(rows.length / 12);
+  const every = Math.max(1, Math.ceil(rows.length / labelBudget(width, pad)));
   rows.forEach((row, i) => {
     if (i % every) return;
     el('text', {
@@ -225,13 +293,16 @@ export function stackedChart(rows, keys, { height = 210, xKey = 'month' } = {}) 
  * Line with a 10% area wash and a labelled endpoint.
  * @param {{key:string,value:number}[]} points
  */
-export function lineChart(points, { height = 210, label = '', areaFill = true } = {}) {
-  const width = 720;
+export function lineChart(points, opts = {}) {
+  return responsive((width) => drawLine(points, { ...opts, width }));
+}
+
+function drawLine(points, { height = 210, label = '', areaFill = true, width = 720 } = {}) {
   const pad = { top: 16, right: 54, bottom: 26, left: 44 };
   const svg = svgRoot(width, height);
   if (points.length < 2) return svg;
 
-  const max = Math.max(...points.map((p) => p.value), 1);
+  const max = peakOf(points.map((p) => p.value));
   const { scale } = yAxis(svg, { ...pad, right: width - pad.right, bottom: height - pad.bottom }, max);
   const step = (width - pad.left - pad.right) / (points.length - 1);
   const x = (i) => pad.left + i * step;
@@ -264,7 +335,7 @@ export function lineChart(points, { height = 210, label = '', areaFill = true } 
     y1: height - pad.bottom, y2: height - pad.bottom,
   }, svg);
 
-  const every = Math.ceil(points.length / 10);
+  const every = Math.max(1, Math.ceil(points.length / labelBudget(width, pad)));
   points.forEach((p, i) => {
     if (i % every && i !== points.length - 1) return;
     el('text', { x: x(i), y: height - pad.bottom + 14, 'text-anchor': 'middle' }, svg).textContent = p.key;
@@ -285,38 +356,75 @@ export function lineChart(points, { height = 210, label = '', areaFill = true } 
  * Horizontal bars for ranked lists — the right form for long category names.
  * @param {{key:string,count:number}[]} data
  */
-export function barsChart(data, { limit = 12, label = '', height = 24 } = {}) {
+export function barsChart(data, opts = {}) {
+  return responsive((width) => drawBars(data, { ...opts, width }));
+}
+
+// Rough advance width of the label font (13px sans) in user units. Only used to
+// size the gutter, so being a little generous is the safe direction.
+const CHAR = 7.2;
+
+function drawBars(data, { limit = 12, label = '', height = null, width = 720 } = {}) {
   const rows = data.slice(0, limit);
-  const width = 720;
-  const labelWidth = 168;
-  const total = rows.length * height + 8;
-  const svg = svgRoot(width, Math.max(total, 40));
+  // A three-category chart at the 24px row height the long ranked lists want
+  // renders as a squat band stretched across the full card, which is what made
+  // "by content type" look mis-sized. Short lists get taller rows.
+  const rowHeight = height ?? (rows.length <= 5 ? 34 : 24);
+  const axisHeight = 20;
+  const plotBottom = rows.length * rowHeight + 4;
+  const svg = svgRoot(width, Math.max(plotBottom + axisHeight, 60));
   if (!rows.length) return svg;
 
-  const max = Math.max(...rows.map((r) => r.count), 1);
-  const trackWidth = width - labelWidth - 64;
+  // The gutter tracks the longest label instead of a fixed 168 units, so "reel"
+  // no longer reserves the same space as a 24-character handle — and long
+  // handles get more room than they used to.
+  const longest = rows.reduce((n, r) => Math.max(n, String(r.key).length), 0);
+  const labelWidth = Math.round(
+    Math.max(44, Math.min(Math.min(longest, 30) * CHAR + 12, width * 0.42)),
+  );
+  const fits = Math.max(5, Math.floor((labelWidth - 12) / CHAR));
+  const trackWidth = Math.max(24, width - labelWidth - 56);
+
+  const max = peakOf(rows.map((r) => r.count));
+  const ticks = niceTicks(max);
+  const axisMax = ticks.at(-1) || 1;
+  const xOf = (v) => labelWidth + (v / axisMax) * trackWidth;
+
+  // Gridlines first so the bars sit on top of them.
+  for (const tick of ticks) {
+    const x = xOf(tick);
+    el('line', { class: 'grid-line', x1: x, x2: x, y1: 0, y2: plotBottom }, svg);
+    el('text', {
+      x, y: plotBottom + 15, 'text-anchor': 'middle',
+    }, svg).textContent = fmt(tick);
+  }
 
   rows.forEach((row, i) => {
-    const y = i * height + 4;
-    const barHeight = Math.min(16, height - GAP * 2);
-    const w = Math.max(2, (row.count / max) * trackWidth);
+    const y = i * rowHeight + 4;
+    const barHeight = Math.min(18, rowHeight - GAP * 2);
+    const w = Math.max(2, (row.count / axisMax) * trackWidth);
+    const text = String(row.key);
 
     el('text', {
-      x: labelWidth - 10, y: y + barHeight / 2 + 3.5, 'text-anchor': 'end', fill: 'var(--text-secondary)',
-    }, svg).textContent = String(row.key).length > 24 ? `${String(row.key).slice(0, 23)}…` : String(row.key);
+      x: labelWidth - 10, y: y + barHeight / 2 + 4.5, 'text-anchor': 'end', fill: 'var(--text-secondary)',
+    }, svg).textContent = text.length > fits ? `${text.slice(0, fits - 1)}…` : text;
 
     el('path', {
       d: barPath(labelWidth, y, w, barHeight, 4, true), fill: seriesColor(0),
     }, svg);
     el('text', {
-      x: labelWidth + w + 7, y: y + barHeight / 2 + 3.5, fill: 'var(--text-muted)',
+      x: labelWidth + w + 7, y: y + barHeight / 2 + 4.5, fill: 'var(--text-muted)',
     }, svg).textContent = fmt(row.count);
 
     const hit = el('rect', {
-      x: 0, y, width, height: Math.max(height, 24), fill: 'transparent',
+      x: 0, y, width, height: Math.max(rowHeight, 24), fill: 'transparent',
     }, svg);
     hoverable(hit, `<b>${row.key}</b><br>${fmt(row.count)}${label ? ` ${label}` : ''}`);
   });
+
+  el('line', {
+    class: 'axis-line', x1: labelWidth, x2: labelWidth, y1: 0, y2: plotBottom,
+  }, svg);
   return svg;
 }
 
@@ -325,13 +433,19 @@ export function barsChart(data, { limit = 12, label = '', height = 24 } = {}) {
  * zero, dark means busy — never a rainbow.
  * @param {number[][]} grid 7 rows of 24
  */
-export function heatmapChart(grid, { label = 'items' } = {}) {
+export function heatmapChart(grid, opts = {}) {
+  return responsive((width) => drawHeatmap(grid, { ...opts, width }));
+}
+
+function drawHeatmap(grid, { label = 'items', width = 666 } = {}) {
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const cell = 26;
   const left = 34;
+  // The cell tracks the available width so the grid is drawn 1:1 instead of
+  // being squeezed by the viewBox — which shrank its labels to under 6px on a
+  // phone. Capped so a wide card does not inflate it into a wall of tiles.
+  const cell = Math.min(30, Math.max(9, Math.floor((width - left - 8) / 24)));
   const top = 16;
-  const width = left + 24 * cell + 8;
-  const svg = svgRoot(width, top + 7 * cell + 6);
+  const svg = svgRoot(left + 24 * cell + 8, top + 7 * cell + 6);
 
   const max = Math.max(...grid.flat(), 1);
   const STEPS = ['--seq-100', '--seq-250', '--seq-400', '--seq-550', '--seq-700'];

@@ -63,6 +63,10 @@ const checks = [
   ['privacy findings', result.results.privacy.findings.length > 0],
   ['history built', result.history.snapshots.length === 1],
   ['no sensitive keys in history', !JSON.stringify(result.history).includes('sensitive')],
+  // The avatar is the only binary taken out of the archive; the bundled build
+  // has to reach it through the same rewritten module graph as everything else.
+  ['profile photo extracted', result.avatar?.bytes?.length > 0],
+  ['profile photo typed as an image', /^image\//.test(result.avatar?.type ?? '')],
 ];
 
 let bad = 0;

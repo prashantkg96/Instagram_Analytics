@@ -3,6 +3,7 @@
 import { h, fmt, download, card, section, notice, table, tile } from './ui.js';
 import { hideTip } from './charts.js';
 import { serializeHistory, historyToCsv, historyFilename } from './history.js';
+import { setNavigator } from './nav.js';
 import {
   overview, audienceView, growthView, contentView, engagementView,
   consumptionView, adsView, messagesView, privacyView, trendsView,
@@ -32,6 +33,7 @@ const state = {
   stats: null,
   downloaded: false,
   active: 'overview',
+  avatarUrl: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -183,6 +185,14 @@ function run() {
       return;
     }
     worker.terminate();
+    // The picture arrives as bytes and becomes a blob: URL, which is what the
+    // enforcing CSP's img-src allows and what keeps it off the network.
+    if (state.avatarUrl) URL.revokeObjectURL(state.avatarUrl);
+    state.avatarUrl = message.avatar
+      ? URL.createObjectURL(new Blob([message.avatar.bytes], { type: message.avatar.type }))
+      : null;
+    if (message.summary?.profile) message.summary.profile.avatarUrl = state.avatarUrl;
+
     Object.assign(state, {
       summary: message.summary,
       results: message.results,
@@ -224,11 +234,12 @@ function showDashboard() {
       onclick: () => renderTab(tab.id),
     }, tab.name)));
 
+  setNavigator(renderTab);
   renderTab(state.active);
   updateReminder();
 }
 
-function renderTab(id) {
+function renderTab(id, anchor) {
   hideTip();
   state.active = id;
   for (const tab of TABS) {
@@ -238,6 +249,14 @@ function renderTab(id) {
   const panel = $('panel');
   panel.replaceChildren(tab.render(state.summary, state.results));
   panel.setAttribute('aria-labelledby', `tab-${id}`);
+
+  // An overview tile that names a number should land on the table behind it,
+  // not at the top of a tab the reader then has to search.
+  const target = anchor ? document.getElementById(anchor) : null;
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 

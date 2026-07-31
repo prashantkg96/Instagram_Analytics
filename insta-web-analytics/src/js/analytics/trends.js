@@ -22,6 +22,7 @@ function series(snapshots, group) {
     const first = known[0]?.value ?? null;
     const last = known.at(-1)?.value ?? null;
     const previous = known.length > 1 ? known.at(-2).value : null;
+    const changeTotal = last !== null && first !== null ? Math.round((last - first) * 100) / 100 : null;
     return {
       key,
       group,
@@ -29,7 +30,12 @@ function series(snapshots, group) {
       first,
       last,
       change: last !== null && previous !== null ? Math.round((last - previous) * 100) / 100 : null,
-      changeTotal: last !== null && first !== null ? Math.round((last - first) * 100) / 100 : null,
+      changeTotal,
+      // Movement per upload rather than in total: the headline "am I growing?"
+      // number, and the only one that stays comparable as snapshots accumulate.
+      changePerSnapshot: changeTotal !== null && known.length > 1
+        ? Math.round((changeTotal / (known.length - 1)) * 100) / 100
+        : null,
     };
   });
 }
@@ -66,8 +72,17 @@ export function trends(history) {
       startedFollowing: following.gained.map((p) => p.u),
       stoppedFollowing: following.lost.map((p) => p.u),
       net: followers.gained.length - followers.lost.length,
+      netFollowing: following.gained.length - following.lost.length,
+      followersBefore: before.followers?.length ?? 0,
+      followersAfter: after.followers?.length ?? 0,
+      followingAfter: after.following?.length ?? 0,
       churnRate: before.followers?.length
         ? Math.round((followers.lost.length / before.followers.length) * 1000) / 10
+        : 0,
+      // The complement of churn, stated rather than left to the reader — how
+      // much of the audience that existed at `from` was still there at `to`.
+      retentionRate: before.followers?.length
+        ? Math.round(((before.followers.length - followers.lost.length) / before.followers.length) * 1000) / 10
         : 0,
     });
   }

@@ -34,6 +34,16 @@ export function parseEngagement(files) {
   const storyLikes = listOf(files, /story_interactions\/story_likes\.html$/i, 'storyLike');
   const saved = listOf(files, /saved\/saved_posts(_\d+)?\.html$/i, 'save');
 
+  // Outgoing story interactions, which Instagram files apart from likes:
+  // polls answered, quizzes taken, sliders dragged, countdowns followed. All of
+  // it is engagement the user gave, and none of it was being read.
+  const storyResponses = [
+    ...listOf(files, /story_interactions\/polls\.html$/i, 'poll'),
+    ...listOf(files, /story_interactions\/quizzes\.html$/i, 'quiz'),
+    ...listOf(files, /story_interactions\/emoji_sliders\.html$/i, 'slider'),
+    ...listOf(files, /story_interactions\/countdowns\.html$/i, 'countdown'),
+  ];
+
   // Comments carry the text the user wrote. Length and timing are kept for
   // analytics; the text itself is used only for emoji/word stats and is never
   // written to the history file.
@@ -53,5 +63,8 @@ export function parseEngagement(files) {
   const savedCollections = nodesOf(pickAll(files, /saved\/saved_collections\.html$/i)).length;
   const savedMusic = nodesOf(pickAll(files, /saved\/saved_music\.html$/i)).length;
 
-  return { likes, likedComments, storyLikes, saved, comments, savedCollections, savedMusic };
+  return {
+    likes, likedComments, storyLikes, saved, comments, savedCollections, savedMusic,
+    storyResponses,
+  };
 }

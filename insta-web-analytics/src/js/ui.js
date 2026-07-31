@@ -53,8 +53,16 @@ export function duration(seconds) {
   return `${(seconds / 86400).toFixed(1)}d`;
 }
 
-/** Stat tile. `delta` is signed and coloured by direction x whether up is good. */
-export function tile(label, value, { delta, deltaLabel, goodWhenUp = true, sub } = {}) {
+/**
+ * Stat tile. `delta` is signed and coloured by direction x whether up is good.
+ *
+ * Passing `onClick` makes the tile a real <button> rather than a div with a
+ * handler, so the numbers that lead somewhere are reachable by keyboard and
+ * announced as actionable.
+ */
+export function tile(label, value, {
+  delta, deltaLabel, goodWhenUp = true, sub, onClick, hint,
+} = {}) {
   const parts = [
     h('span', { class: 'label' }, label),
     h('span', { class: 'value' }, typeof value === 'number' ? compact(value) : value),
@@ -73,7 +81,10 @@ export function tile(label, value, { delta, deltaLabel, goodWhenUp = true, sub }
   } else if (sub) {
     parts.push(h('span', { class: 'delta' }, sub));
   }
-  return h('div', { class: 'card tile' }, ...parts);
+  if (onClick && hint) parts.push(h('span', { class: 'tile-hint' }, hint));
+
+  if (!onClick) return h('div', { class: 'card tile' }, ...parts);
+  return h('button', { class: 'card tile tile-link', type: 'button', onclick: onClick }, ...parts);
 }
 
 /** Inline icons for the profile chips. Hand-drawn in the lucide idiom. */
