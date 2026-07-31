@@ -140,15 +140,74 @@ export function iso(date) {
   return date ? date.toISOString() : null;
 }
 
-/** Export-wide metadata, read from whichever file is available. */
+/**
+ * Export-wide metadata.
+ *
+ * `spliced` is the important one. Instagram writes "Contains data you requested
+ * from X to Y" only when a date range was chosen — a complete-timeline export
+ * carries just the generation stamp. So the presence of a range IS the signal
+ * that the data is a slice.
+ *
+ * That distinction matters far more than it looks: on a spliced export the
+ * follower list contains only people gained inside the window, while the
+ * following list is complete regardless. Comparing them (mutuals, fans,
+ * follow-back rate) then produces confident nonsense — measured on a real
+ * one-year export: 11 followers vs 89 following, giving a "12.4% follow-back
+ * rate" where the true figure was 89.9%.
+ */
 export function readMeta(files) {
   for (const html of files.values()) {
     const head = readHeader(html);
     if (head.generatedAt) {
-      return { generatedAt: head.generatedAt, rangeStart: head.rangeStart, rangeEnd: head.rangeEnd };
+      return {
+        generatedAt: head.generatedAt,
+        rangeStart: head.rangeStart,
+        rangeEnd: head.rangeEnd,
+        spliced: Boolean(head.rangeStart),
+      };
     }
   }
-  return { generatedAt: null, rangeStart: null, rangeEnd: null };
+  return { generatedAt: null, rangeStart: null, rangeEnd: null, spliced: false };
+}
+
+/**
+ * The window a dataset actually covers, which is rarely the window that was
+ * requested. Instagram caps impression history by its own retention: in a
+ * complete-timeline export, likes went back 1128 days while ads went back 8.
+ * Any ratio built from two sections must be computed over their overlap, not
+ * their totals, or it silently divides one window by another.
+ *
+ * @param {Array<{at: string|null}>} rows
+ */
+export function coverageOf(rows) {
+  const stamps = rows.map((r) => r.at).filter(Boolean).sort();
+  if (!stamps.length) return { first: null, last: null, days: 0, activeDays: 0, count: 0 };
+  const first = stamps[0];
+  const last = stamps.at(-1);
+  return {
+    first,
+    last,
+    // Inclusive calendar span, so a single-day dataset reads as 1 rather than 0.
+    days: Math.max(1, Math.round((Date.parse(last) - Date.parse(first)) / 864e5) + 1),
+    activeDays: new Set(stamps.map((s) => s.slice(0, 10))).size,
+    count: rows.length,
+  };
+}
+
+/** Rows falling inside [from, to] inclusive — for like-for-like comparisons. */
+export function withinWindow(rows, from, to) {
+  if (!from || !to) return rows;
+  return rows.filter((r) => r.at && r.at >= from && r.at <= to);
+}
+
+/** The overlap of several coverage windows, or null when they do not intersect. */
+export function overlapOf(...coverages) {
+  const valid = coverages.filter((c) => c && c.first && c.last);
+  if (!valid.length) return null;
+  const from = valid.map((c) => c.first).sort().at(-1);
+  const to = valid.map((c) => c.last).sort()[0];
+  if (from > to) return null;
+  return { from, to, days: Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1) };
 }
 
 export { field, section, leafValues, parseStamp, trailingStamp };

@@ -1,6 +1,6 @@
 // index.js — turn a set of export files into one normalized dataset.
 
-import { readMeta } from './common.js';
+import { readMeta, coverageOf } from './common.js';
 import { parseProfile } from './profile.js';
 import { parseConnections } from './connections.js';
 import { parseContent } from './content.js';
@@ -42,7 +42,7 @@ export function parseExport(files) {
   const profile = parseProfile(files);
   const connections = parseConnections(files);
 
-  return {
+  const data = {
     format,
     meta: readMeta(files),
     profile,
@@ -54,4 +54,23 @@ export function parseExport(files) {
     messages: parseMessages(files, profile.name),
     security: parseSecurity(files),
   };
+
+  // What each section actually covers. Instagram's retention limits differ wildly
+  // per section — likes can reach back years while ads reach back days — so
+  // anything comparing two sections has to know their real windows rather than
+  // assume the requested range applies to both.
+  data.coverage = {
+    followers: coverageOf(data.followers),
+    following: coverageOf(data.following),
+    posts: coverageOf(data.content.published),
+    likes: coverageOf(data.engagement.likes),
+    comments: coverageOf(data.engagement.comments),
+    saved: coverageOf(data.engagement.saved),
+    storiesViewed: coverageOf(data.consumption.storiesViewed),
+    postsViewed: coverageOf(data.consumption.postsViewed),
+    videosWatched: coverageOf(data.consumption.videosWatched),
+    adsViewed: coverageOf(data.ads.adsViewed),
+  };
+
+  return data;
 }

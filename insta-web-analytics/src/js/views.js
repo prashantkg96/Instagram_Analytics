@@ -1,7 +1,7 @@
 // views.js — one renderer per tab.
 
 import {
-  h, fmt, pct, shortDate, duration, tile, table, card, chartCard, section, notice, handle,
+  h, fmt, pct, shortDate, duration, tile, table, card, chartCard, section, notice, handle, chip,
 } from './ui.js';
 import {
   columnChart, stackedChart, lineChart, barsChart, heatmapChart, sparkline,
@@ -23,45 +23,90 @@ const countTable = (rows, keyLabel, valueLabel) => () =>
     { filter: rows.length > 15 },
   );
 
+/** Coverage of the data, worded for a human. */
+function coverageLabel(meta) {
+  if (!meta.spliced) return 'All time';
+  return `${shortDate(meta.rangeStart)} – ${shortDate(meta.rangeEnd)}`;
+}
+
+/**
+ * Account identity: name above handle, then state-carrying chips, with the
+ * generation date pushed to the right.
+ */
+function profileHeader(data) {
+  const p = data.profile;
+  const chips = [
+    chip(p.isPrivate ? 'lock' : 'globe', `${p.isPrivate ? 'Private' : 'Public'} account`),
+    p.createdAt ? chip('calendar', `Joined ${shortDate(p.createdAt)}`) : null,
+    p.basedIn?.city ? chip('pin', p.basedIn.city) : null,
+    // The one chip that changes tone: a sliced window is a caveat on every
+    // number below it, so it must not look like ordinary metadata.
+    chip('history', coverageLabel(data.meta), { tone: data.meta.spliced ? 'warn' : null }),
+  ].filter(Boolean);
+
+  return h('header', { class: 'profile-head' },
+    h('div', { class: 'profile-id' },
+      h('h2', {}, p.name || p.username || 'Your account'),
+      p.name && p.username ? h('p', { class: 'profile-handle' }, `@${p.username}`) : null,
+    ),
+    h('div', { class: 'profile-chips' }, ...chips),
+    h('p', { class: 'profile-generated' }, `Generated ${shortDate(data.meta.generatedAt)}`),
+  );
+}
+
 // ── Overview ───────────────────────────────────────────────────────────────
 export function overview(data, results) {
   const a = results.audience.insights;
   const change = results.audience.change;
+  const spliced = Boolean(data.meta.spliced);
   const frag = document.createDocumentFragment();
 
-  frag.append(section(
-    `@${data.profile.username ?? 'your account'}`,
-    `${data.profile.isPrivate ? 'Private' : 'Public'} account, created ${shortDate(data.profile.createdAt)}` +
-      `${data.profile.basedIn?.city ? ` · based in ${data.profile.basedIn.city}` : ''}` +
-      ` · export generated ${shortDate(data.meta.generatedAt)}`,
+  frag.append(profileHeader(data));
+
+  if (spliced) {
+    frag.append(notice(
+      '<strong>This is part of your timeline, not all of it.</strong> You picked a date range, so ' +
+      'Instagram only included followers gained inside it — while your following list is complete ' +
+      'either way. Comparisons between the two (mutuals, fans, follow-back rate) are not like-for-like. ' +
+      'Request your data again with the <strong>complete timeline</strong> to fix this.',
+      'warn',
+    ));
+  }
+
+  frag.append(section(null, null,
     h('div', { class: 'grid cols-4' },
-      tile('Followers', a.followers, {
+      tile(spliced ? 'New followers (in range)' : 'Followers', a.followers, {
         delta: change ? change.newFollowers.length - change.unfollowers.length : null,
         deltaLabel: 'since last upload',
       }),
       tile('Following', a.following, {
         delta: change ? change.newlyFollowing.length - change.youUnfollowed.length : null,
         deltaLabel: 'since last upload',
-        goodWhenUp: false,
+        goodWhenUp: null,
       }),
       tile('Mutuals', a.mutuals, { sub: `${pct(a.mutualPercentage)} of followers` }),
       tile('Follow-back rate', pct(a.followBackRate), { sub: `${a.notFollowingBack} don't follow back` }),
     ),
   ));
 
-  frag.append(section('Your activity in this export', null,
+  const adWin = results.ads.adShareWindow;
+  frag.append(section('Your activity', null,
     h('div', { class: 'grid cols-4' },
       tile('Posts published', results.content.totals.published, {
         sub: `${results.content.totals.posts} posts · ${results.content.totals.stories} stories · ${results.content.totals.reels} reels`,
       }),
       tile('Things you watched', results.consumption.totals.impressions, {
-        sub: `${fmt(results.consumption.perActiveDay.median ?? 0)}/day typical`,
+        // Instagram keeps only recent impressions whatever range you ask for,
+        // so this figure is never lifetime. Say the window rather than imply one.
+        sub: `last ${results.consumption.activeDays} days · ${fmt(results.consumption.perActiveDay.median ?? 0)}/day typical`,
       }),
       tile('Likes given', data.engagement.likes, {
         sub: `${fmt(data.engagement.comments)} comments written`,
       }),
       tile('Ads shown to you', results.ads.totals.adsViewed, {
-        sub: `${pct(results.ads.adShare)} of everything you saw`,
+        sub: adWin
+          ? `${pct(results.ads.adShare)} of what you saw in those ${adWin.days} days`
+          : `${pct(results.ads.adShare)} of what you saw`,
       }),
     ),
   ));
@@ -72,7 +117,7 @@ export function overview(data, results) {
       chartCard(
         'Cumulative followers by join month',
         'Reconstructed from the date each follower joined, so it works from a single upload. ' +
-          'It counts only people who are still following you today — anyone who left is absent from the export, ' +
+          'It counts only people who are still following you today — anyone who left is absent from your data, ' +
           'so treat this as a floor rather than a true historical follower count.',
         lineChart(acquisition.map((p) => ({ key: p.month.slice(2), value: p.cumulative })), { label: 'followers' }),
         {
@@ -92,8 +137,8 @@ export function overview(data, results) {
   if (!results.trends.available) {
     frag.append(section(null, null, notice(
       '<strong>This is your first upload.</strong> Download the history file from the Export tab before you ' +
-      'close this page — nothing is saved in your browser. Upload it alongside your next export and every ' +
-      'number here gains a trend line, plus you get the names of who followed and unfollowed in between.',
+      'close this page — nothing is saved in your browser. Upload it alongside your next Instagram data and ' +
+      'every number here gains a trend line, plus you get the names of who followed and unfollowed in between.',
     )));
   }
   return frag;
@@ -104,7 +149,7 @@ export function audienceView(data, results) {
   const r = results.audience;
   const frag = document.createDocumentFragment();
 
-  frag.append(section('Relationships', 'The same set comparisons the desktop app makes, computed from your export.',
+  frag.append(section('Relationships', 'The same set comparisons the desktop app makes, computed from your Instagram data.',
     h('div', { class: 'grid cols-4' },
       tile('Mutuals', r.insights.mutuals),
       tile("Don't follow you back", r.insights.notFollowingBack, { goodWhenUp: false }),
@@ -120,7 +165,7 @@ export function audienceView(data, results) {
   ));
 
   if (r.change) {
-    frag.append(section('Since your last upload', `Compared with the export generated ${shortDate(results.comparedWith)}.`,
+    frag.append(section('Since your last upload', `Compared with the data generated ${shortDate(results.comparedWith)}.`,
       h('div', { class: 'grid cols-4' },
         tile('New followers', r.change.newFollowers.length),
         tile('Unfollowed you', r.change.unfollowers.length, { goodWhenUp: false }),
@@ -137,7 +182,7 @@ export function audienceView(data, results) {
   const rec = r.reciprocity;
   if (rec.rows.length) {
     frag.append(section('Reciprocity',
-      'Both the date someone followed you and the date you followed back are in the export, ' +
+      'Both the date someone followed you and the date you followed back are in your data, ' +
       'so the gap between them is measurable.',
       h('div', { class: 'grid cols-3' },
         tile('Median follow-back gap', rec.medianLagHours === null ? '—' : duration(Math.abs(rec.medianLagHours) * 3600)),
@@ -178,7 +223,7 @@ export function growthView(data, results) {
   const frag = document.createDocumentFragment();
 
   frag.append(section('Which posts brought followers in',
-    'Your export has no like, comment or view counts — Meta omits them. It does timestamp every follower ' +
+    'Your Instagram data has no like, comment or view counts — Meta omits them. It does timestamp every follower ' +
     'and every post, so the two can be joined: each follower is credited to the most recent post published ' +
     'before they arrived, within a ' + at.windowDays + '-day window. This is correlation, not proof.',
     h('div', { class: 'grid cols-4' },
@@ -256,7 +301,7 @@ export function contentView(data, results) {
   frag.append(section('What you publish',
     `${shortDate(c.firstAt)} to ${shortDate(c.lastAt)}.`,
     h('div', { class: 'grid cols-4' },
-      tile('Published items', c.totals.published, { sub: `${c.perMonthAverage}/month average` }),
+      tile('Published items', c.totals.published, { sub: `${c.perActiveMonth}/month when active · ${c.activeMonths} of ${c.elapsedMonths} months` }),
       tile('Active days', c.streaks.activeDays, { sub: `longest streak ${c.streaks.longestStreak} days` }),
       tile('Longest silence', `${c.streaks.longestGapDays}d`, {
         sub: c.streaks.gapFrom ? `${shortDate(c.streaks.gapFrom)} → ${shortDate(c.streaks.gapTo)}` : null,
@@ -325,7 +370,7 @@ export function contentView(data, results) {
 
   if (c.geo.length) {
     frag.append(section('Location-tagged content',
-      'These coordinates are metre-precise and sit in the export even though the image files themselves ' +
+      'These coordinates are metre-precise and sit in your data even though the image files themselves ' +
       'are stripped of EXIF. See the Privacy tab.',
       card(null, null, table(
         [
@@ -348,36 +393,48 @@ export function engagementView(data, results) {
   const frag = document.createDocumentFragment();
 
   frag.append(section('Who you pay attention to',
-    'The desktop app ranks followers by how much they engage with you — the export cannot answer that, ' +
+    'The desktop app ranks followers by how much they engage with you — your Instagram data cannot answer that, ' +
     'because it contains no engagement received. It answers the mirror image exactly: every like, comment, ' +
     'save and view you made, with the creator attached.',
     h('div', { class: 'grid cols-4' },
-      tile('Creators you engaged with', af.engagedCreators, { sub: `${fmt(af.totalCreators)} seen in total` }),
+      tile('Creators you engaged with', af.engagedCreators),
+      tile('Creators you watched', af.watchedCreators, {
+        sub: af.watchedCoverage ? `last ${af.watchedCoverage.days} days` : null,
+      }),
       tile('Likes given', data.engagement.likes),
       tile('Comments written', data.engagement.comments),
-      tile('Posts saved', data.engagement.saved),
     ),
   ));
 
-  frag.append(section(null, null, chartCard(
-    'Top creators by affinity',
-    `Weighted: comment ×${af.weights.comment}, save ×${af.weights.save}, like ×${af.weights.like}, view ×${af.weights.view}.`,
-    barsChart(af.creators.slice(0, 15).map((c) => ({ key: c.u, count: c.score })), { label: 'affinity' }),
-    {
-      tableView: () => table(
-        [
-          { key: 'u', label: 'Creator', render: (v) => handle(v) },
-          { key: 'score', label: 'Affinity', num: true },
-          { key: 'like', label: 'Likes', num: true },
-          { key: 'comment', label: 'Comments', num: true },
-          { key: 'view', label: 'Views', num: true },
-          { key: 'youFollow', label: 'You follow', render: (v) => (v ? 'yes' : '—') },
-          { key: 'followsYou', label: 'Follows you', render: (v) => (v ? 'yes' : '—') },
-        ],
-        af.creators,
-        { filter: true },
-      ),
-    },
+  // Two lists, not one merged score. Deliberate interactions reach back years
+  // while view history reaches back days, so a single ranking simply buried
+  // the viewing data — every top creator scored with zero views.
+  const owner = (rows, valueKey, label) => () => table(
+    [
+      { key: 'u', label: 'Creator', render: (v) => handle(v) },
+      { key: valueKey, label, num: true },
+      { key: 'youFollow', label: 'You follow', render: (v) => (v ? 'yes' : '—') },
+      { key: 'followsYou', label: 'Follows you', render: (v) => (v ? 'yes' : '—') },
+    ],
+    rows,
+    { filter: true },
+  );
+
+  frag.append(section(null, null, h('div', { class: 'grid cols-2' },
+    chartCard(
+      'Creators you engage with',
+      `Likes, comments and saves${af.engagedCoverage ? ` across ${af.engagedCoverage.days} days` : ''}. ` +
+      `Weighted: comment ×${af.weights.comment}, save ×${af.weights.save}, like ×${af.weights.like}.`,
+      barsChart(af.engaged.slice(0, 12).map((c) => ({ key: c.u, count: c.score })), { label: 'affinity' }),
+      { tableView: owner(af.engaged, 'score', 'Affinity') },
+    ),
+    chartCard(
+      'Creators you watch',
+      `Stories, reels and posts viewed${af.watchedCoverage ? ` in the last ${af.watchedCoverage.days} days` : ''}. ` +
+      'Instagram keeps only recent viewing history, so this is a separate, much shorter window.',
+      barsChart(af.watched.slice(0, 12).map((c) => ({ key: c.u, count: c.view })), { label: 'views' }),
+      { tableView: owner(af.watched, 'view', 'Views') },
+    ),
   )));
 
   frag.append(section('One-sided follows',
@@ -450,7 +507,7 @@ export function consumptionView(data, results) {
       h('div', {},
         h('p', { class: 'sub' },
           `Total dwell ${duration(c.links.totalSeconds)} · median ${duration(c.links.medianSeconds)} per visit. ` +
-          'Session start and end times are the only duration data anywhere in the export.'),
+          'Session start and end times are the only duration data anywhere in your Instagram data.'),
         table([{ key: 'key', label: 'Site' }, { key: 'count', label: 'Visits', num: true }], c.links.hosts))),
   )));
 
@@ -558,7 +615,7 @@ export function privacyView(data, results) {
 
   frag.append(section('What this ZIP would tell an attacker',
     'Everything below is read in memory to build this page and is never written to the history file. ' +
-    'Check it before you send your export to anyone.',
+    'Check it before you send your data to anyone.',
     h('div', { class: 'grid cols-4' },
       tile('Findings', p.findings.length, { goodWhenUp: false }),
       tile('IP addresses', p.identifiers.ipCount, { goodWhenUp: false }),
@@ -578,7 +635,7 @@ export function privacyView(data, results) {
   )));
 
   frag.append(section(null, null, h('div', { class: 'grid cols-2' },
-    card('Not present — confirmed', 'Absent from your export, so a leak would not immediately hand over your account.',
+    card('Not present — confirmed', 'Absent from your data, so a leak would not immediately hand over your account.',
       h('div', {}, ...p.cleared.map((c) => h('div', { class: 'finding' },
         h('span', { class: 'sev sev-low' }),
         h('div', {}, h('h4', {}, c.title), h('p', {}, c.detail)))))),

@@ -10,17 +10,17 @@
 //   non-follower engagers  -> creators you engage with who ignore you back
 //
 // Weights are deliberate: writing a comment is a stronger signal of interest
-// than a like, and a like is stronger than a passing view.
-const WEIGHTS = { comment: 4, save: 3, like: 2, storyLike: 2, likeComment: 1, view: 0.2 };
+// than a like. Views are NOT in this scale — see below.
+const WEIGHTS = { comment: 4, save: 3, like: 2, storyLike: 2, likeComment: 1 };
 
-function add(map, handle, kind, at) {
+function add(map, handle, kind, at, weight) {
   if (!handle) return;
   const key = handle.toLowerCase();
   const row = map.get(key) ?? {
     u: handle, comment: 0, save: 0, like: 0, storyLike: 0, likeComment: 0, view: 0, score: 0, last: null,
   };
   row[kind]++;
-  row.score += WEIGHTS[kind];
+  row.score += weight;
   if (at && (!row.last || at > row.last)) row.last = at;
   map.set(key, row);
 }
@@ -28,30 +28,45 @@ function add(map, handle, kind, at) {
 export function affinity(data) {
   const { likes, comments, saved, storyLikes, likedComments } = data.engagement;
   const { storiesViewed, postsViewed, videosWatched } = data.consumption;
+  const cov = data.coverage ?? {};
 
-  const creators = new Map();
-  for (const x of likes) add(creators, x.u, 'like', x.at);
-  for (const x of comments) add(creators, x.u, 'comment', x.at);
-  for (const x of saved) add(creators, x.u, 'save', x.at);
-  for (const x of storyLikes) add(creators, x.u, 'storyLike', x.at);
-  for (const x of likedComments) add(creators, x.u, 'likeComment', x.at);
-  for (const x of [...storiesViewed, ...postsViewed, ...videosWatched]) add(creators, x.u, 'view', x.at);
+  // Two rankings, not one.
+  //
+  // Deliberate interactions and passive views are retained for wildly different
+  // lengths of time — on a real complete-timeline export, likes reached back
+  // 1128 days and views 31. Scoring them together made view counts invisible:
+  // every one of the top five creators had `view: 0`, because a decade of likes
+  // buried a month of watching no matter how the weights were set. They are
+  // different questions over different windows, so they get different lists.
+  const engagedMap = new Map();
+  for (const x of likes) add(engagedMap, x.u, 'like', x.at, WEIGHTS.like);
+  for (const x of comments) add(engagedMap, x.u, 'comment', x.at, WEIGHTS.comment);
+  for (const x of saved) add(engagedMap, x.u, 'save', x.at, WEIGHTS.save);
+  for (const x of storyLikes) add(engagedMap, x.u, 'storyLike', x.at, WEIGHTS.storyLike);
+  for (const x of likedComments) add(engagedMap, x.u, 'likeComment', x.at, WEIGHTS.likeComment);
 
-  for (const row of creators.values()) row.score = Math.round(row.score * 10) / 10;
+  const watchedMap = new Map();
+  for (const x of [...storiesViewed, ...postsViewed, ...videosWatched]) {
+    add(watchedMap, x.u, 'view', x.at, 1);
+  }
 
   const followingSet = new Set(data.following.map((p) => p.u.toLowerCase()));
   const followerSet = new Set(data.followers.map((p) => p.u.toLowerCase()));
 
-  const all = [...creators.entries()].map(([key, row]) => ({
+  const decorate = (map) => [...map.entries()].map(([key, row]) => ({
     ...row,
+    score: Math.round(row.score * 10) / 10,
     interactions: row.comment + row.save + row.like + row.storyLike + row.likeComment,
     youFollow: followingSet.has(key),
     followsYou: followerSet.has(key),
   }));
-  all.sort((a, b) => b.score - a.score);
 
-  const engagedKeys = new Set(all.filter((r) => r.interactions > 0).map((r) => r.u.toLowerCase()));
-  const seenKeys = new Set(all.map((r) => r.u.toLowerCase()));
+  const engaged = decorate(engagedMap).sort((a, b) => b.score - a.score);
+  const watched = decorate(watchedMap).sort((a, b) => b.view - a.view);
+
+  const engagedKeys = new Set(engaged.filter((r) => r.interactions > 0).map((r) => r.u.toLowerCase()));
+  const seenKeys = new Set([...engagedMap.keys(), ...watchedMap.keys()]);
+  const all = engaged;
 
   // The real analogue of "ghost followers": accounts occupying a following
   // slot that have never produced a single interaction.
@@ -66,9 +81,17 @@ export function affinity(data) {
   const mutualEngaged = all.filter((r) => r.followsYou && r.interactions > 0);
 
   return {
+    // Two lists over two windows. `coverage` travels with each so the UI can
+    // state the period rather than let either read as lifetime.
+    engaged: engaged.slice(0, 200),
+    engagedCoverage: cov.likes ?? null,
+    watched: watched.slice(0, 200),
+    watchedCoverage: cov.storiesViewed ?? null,
+
     creators: all.slice(0, 200),
     totalCreators: all.length,
     engagedCreators: engagedKeys.size,
+    watchedCreators: watchedMap.size,
     oneSidedFollows,
     oneSidedCount: oneSidedFollows.length,
     // Following slots that produce nothing — the number worth acting on.

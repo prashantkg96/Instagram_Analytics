@@ -73,7 +73,16 @@ export function content(data) {
     // Stories are ephemeral; how often they are reshares rather than original
     // material says something about how the account is actually used.
     storySources: ranked(countBy(stories, (s) => s.sourceType), 10),
-    perMonthAverage: cadence.length ? round(all.length / cadence.length, 1) : 0,
+    // Per ACTIVE month — `cadence` only contains months that have content, so
+    // dividing by its length answers "how much do you post when you post",
+    // not "per month". Both are given so the UI can label whichever it shows.
+    perActiveMonth: cadence.length ? round(all.length / cadence.length, 1) : 0,
+    activeMonths: cadence.length,
+    elapsedMonths: months.length
+      ? Math.max(1, Math.round(
+        (Date.parse(`${months.at(-1)}-01`) - Date.parse(`${months[0]}-01`)) / 2629800000,
+      ) + 1)
+      : 0,
     monthlySeries: chronological(countBy(all, monthOf)),
   };
 }

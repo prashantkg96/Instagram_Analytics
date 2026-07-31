@@ -34,6 +34,9 @@ function summarize(data) {
       comments: data.engagement.comments.length,
       saved: data.engagement.saved.length,
     },
+    // Per-section windows, so the UI can state what a number covers instead of
+    // letting every figure read as lifetime.
+    coverage: data.coverage,
   };
 }
 

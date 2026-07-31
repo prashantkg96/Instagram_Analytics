@@ -150,7 +150,13 @@ export function audience(data, previous) {
     change,
     acquisition: acquisitionByMonth(followers),
     followingByMonth: acquisitionByMonth(following),
-    cohorts: cohortRetention(followers, previous?.followers ?? []),
+    // Only meaningful once a previous snapshot supplies the people who left.
+    // From one upload every survivor is present by definition, so it reads
+    // 100% for every cohort — 59 rows of noise dressed as a finding.
+    cohorts: previous?.followers?.length ? cohortRetention(followers, previous.followers) : [],
+    // A spliced export's follower list is only those gained inside the window,
+    // so the set comparisons above are not like-for-like. The UI must say so.
+    spliced: Boolean(data.meta?.spliced),
     reciprocity: reciprocity(followers, following),
     // Departures Instagram records directly, independent of any snapshot.
     recentlyUnfollowed: data.unfollowed,

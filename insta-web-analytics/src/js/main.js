@@ -247,7 +247,7 @@ function updateReminder() {
   if (state.downloaded) return;
   bar.replaceChildren(
     h('p', {}, h('strong', {}, 'Nothing is saved in your browser. '),
-      'Download your history file to compare against your next export.'),
+      'Download your history file to compare against your next Instagram data.'),
     h('button', { class: 'btn btn-primary', type: 'button', onclick: saveHistory }, 'Download history'),
   );
 }
@@ -279,7 +279,7 @@ function exportView(summary, results) {
 
   frag.append(section(null, null, h('div', { class: 'grid cols-2' },
     card('History file (JSON)',
-      'The one to keep. Upload it with your next export to unlock trends. It holds your username, ' +
+      'The one to keep. Upload it next time to unlock trends. It holds your username, ' +
       'follower and following handles with their dates, per-day activity totals and your top creators — ' +
       'and none of your email, phone, IP addresses, device IDs, GPS coordinates or message text.',
       h('div', { class: 'dropzone-actions dropzone-actions--start' },

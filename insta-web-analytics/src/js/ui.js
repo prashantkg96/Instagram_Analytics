@@ -61,13 +61,47 @@ export function tile(label, value, { delta, deltaLabel, goodWhenUp = true, sub }
   ];
   if (delta !== null && delta !== undefined && delta !== 0) {
     const rising = delta > 0;
-    const good = rising === goodWhenUp;
-    parts.push(h('span', { class: `delta ${good ? 'up' : 'down'}` },
+    // The triangle always shows direction; the colour is reserved for metrics
+    // where a direction genuinely is better or worse. Passing
+    // `goodWhenUp: null` says "this moved, and that is neither good nor bad" —
+    // following six more accounts is not a regression, and colouring it red
+    // asserts a judgement the number does not support.
+    const tone = goodWhenUp === null ? 'flat' : (rising === goodWhenUp ? 'up' : 'down');
+    parts.push(h('span', { class: `delta ${tone}` },
+      h('span', { class: 'delta-arrow', 'aria-hidden': 'true' }, rising ? '▲' : '▼'),
       `${rising ? '+' : ''}${fmt(delta)}${deltaLabel ? ` ${deltaLabel}` : ''}`));
   } else if (sub) {
     parts.push(h('span', { class: 'delta' }, sub));
   }
   return h('div', { class: 'card tile' }, ...parts);
+}
+
+/** Inline icons for the profile chips. Hand-drawn in the lucide idiom. */
+const CHIP_ICONS = {
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+};
+
+/**
+ * A small labelled chip with a state-dependent icon.
+ * @param {keyof CHIP_ICONS} icon
+ */
+export function chip(icon, label, { tone } = {}) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'chip-icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = CHIP_ICONS[icon] ?? '';
+  return h('span', { class: `chip${tone ? ` chip--${tone}` : ''}` }, svg, h('span', {}, label));
 }
 
 /**

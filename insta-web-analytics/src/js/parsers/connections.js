@@ -45,6 +45,12 @@ export function parseConnections(files) {
     followRequests: list(/recent_follow_requests\.html$/i),
     removedSuggestions: list(/removed_suggestions\.html$/i),
     pendingFollowRequests: list(/pending_follow_requests\.html$/i),
+    // Present in complete-timeline exports. The apostrophe in
+    // "profiles_you've_favorited" is literal in the filename.
+    favourited: list(/profiles_you.?ve_favorited\.html$/i),
+    restricted: list(/restricted_profiles\.html$/i),
+    hiddenFromStory: list(/hide_story_from\.html$/i),
+    closeFriends: list(/close_friends\.html$/i),
     // Contacts are other people's phone numbers. Only the count is kept, and
     // even that never reaches the history file — it exists for the privacy
     // audit, which needs to tell the user this data is in their ZIP.

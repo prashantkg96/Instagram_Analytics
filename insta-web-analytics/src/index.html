@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Instagram Export Analytics — offline, private</title>
-<meta name="description" content="Turn your official Instagram data export into a dashboard. Runs entirely in your browser: nothing is uploaded, nothing is stored.">
+<meta name="description" content="Turn your official Instagram data into a dashboard. Runs entirely in your browser: nothing is uploaded, nothing is stored.">
 <meta name="color-scheme" content="light dark">
 
 <!--
@@ -47,23 +47,25 @@
   <div id="intro" class="intro">
 
     <p class="claim-note">
-      <span class="claim-lead">Your export never leaves your <span class="hl">device</span>.</span>
-      <span class="claim-sub">Read, parsed and charted entirely in this tab — nothing uploaded, nothing stored.</span>
+      <span class="claim-lead">Your data never leaves your <span class="hl">device</span>.</span>
+      <span class="claim-sub">Read, parsed and visualised entirely in this tab — nothing uploaded, nothing stored.</span>
     </p>
 
     <details class="steps-panel" id="steps">
-      <summary>How to get your Instagram export</summary>
-      <p class="sub">Instagram calls it "Download your information". It arrives by email.</p>
+      <summary>How to get your Instagram data</summary>
+      <p class="sub">Instagram sends it by email, usually within a few hours.</p>
       <ol class="steps">
-        <li>Instagram → <kbd>Settings and activity</kbd> → <kbd>Accounts Centre</kbd>.
-          <span class="hint">On a computer: accountscenter.instagram.com</span></li>
-        <li><kbd>Your information and permissions</kbd> → <kbd>Download your information</kbd>.</li>
-        <li><kbd>Download or transfer information</kbd>, then pick your account.</li>
-        <li><kbd>All available information</kbd> → <kbd>Download to device</kbd>.</li>
-        <li>Date range <kbd>All time</kbd>, format <kbd>JSON</kbd>, media quality <kbd>Low</kbd>.
-          <span class="hint">A narrower range truncates your history. Media can be Low — photos and
-            videos are never opened, so a smaller archive analyses identically.</span></li>
-        <li><kbd>Create files</kbd>, then wait for the email — hours, sometimes days.</li>
+        <li>Instagram → your profile → <kbd>Settings</kbd> → <kbd>Accounts Centre</kbd>.</li>
+        <li><kbd>Your information and permissions</kbd> → <kbd>Export your information</kbd>.</li>
+        <li><kbd>Create export</kbd>, then choose your Instagram account.</li>
+        <li><kbd>Export to device</kbd>.</li>
+        <li>
+          Set date range to the <kbd>complete timeline</kbd> — <strong>not</strong> "past year".
+          <span class="hint">A shorter range gives you only the followers you gained inside it, while
+            your following list stays complete — so the two can't be compared. Format JSON, media
+            quality Low: photos and videos are never opened, so a smaller file works identically.</span>
+        </li>
+        <li>Submit, then wait for the email.</li>
         <li>Drop the <kbd>.zip</kbd> below, exactly as it arrived.</li>
       </ol>
     </details>
@@ -71,7 +73,7 @@
     <div class="intake">
       <section class="dropzone" id="drop-zip" aria-labelledby="drop-zip-title">
         <p class="dropzone-head">
-          <span class="dropzone-title" id="drop-zip-title">Your Instagram export</span>
+          <span class="dropzone-title" id="drop-zip-title">Your Instagram data</span>
           <span class="badge badge--required">Required</span>
         </p>
         <p class="dropzone-hint">The <kbd>.zip</kbd> Instagram emailed you.</p>
@@ -88,8 +90,7 @@
           <span class="badge">Optional</span>
         </p>
         <p class="dropzone-hint">
-          Add the <kbd>insta-history-*.json</kbd> you downloaded last time to see what changed —
-          who followed, who left, and every trend line.
+          Not your first time here? Upload the <kbd>insta-history-*.json</kbd> you downloaded before.
         </p>
         <div class="dropzone-actions">
           <button class="btn" id="choose-history" type="button">Choose file</button>
