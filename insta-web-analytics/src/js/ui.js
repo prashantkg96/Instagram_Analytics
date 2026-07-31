@@ -61,7 +61,7 @@ export function duration(seconds) {
  * announced as actionable.
  */
 export function tile(label, value, {
-  delta, deltaLabel, goodWhenUp = true, sub, onClick, hint,
+  delta, deltaLabel, goodWhenUp = true, sub, onClick,
 } = {}) {
   const parts = [
     h('span', { class: 'label' }, label),
@@ -81,8 +81,6 @@ export function tile(label, value, {
   } else if (sub) {
     parts.push(h('span', { class: 'delta' }, sub));
   }
-  if (onClick && hint) parts.push(h('span', { class: 'tile-hint' }, hint));
-
   if (!onClick) return h('div', { class: 'card tile' }, ...parts);
   return h('button', { class: 'card tile tile-link', type: 'button', onclick: onClick }, ...parts);
 }

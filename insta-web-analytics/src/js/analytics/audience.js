@@ -146,6 +146,10 @@ export function audience(data, previous) {
 
   return {
     ...rel,
+    // The three headline numbers each need the list behind them, so the
+    // overview tiles can open it rather than just stating a count.
+    followers,
+    following,
     insights,
     change,
     acquisition: acquisitionByMonth(followers),

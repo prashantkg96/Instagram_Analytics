@@ -352,15 +352,16 @@ a { color: var(--series-1); }
 .tile .delta.down { color: var(--critical); }
 .tile .delta.flat { color: var(--text-muted); }
 
-/* Tiles that lead somewhere are real buttons, so they need the text alignment
- * and cursor a button does not inherit from .card. */
+/* Tiles that open a list are real buttons, so they need the text alignment and
+ * cursor a button does not inherit from .card. With no label saying so, the
+ * hover state is what tells you the whole box is the link. */
 .tile-link {
   text-align: left; font: inherit; cursor: pointer; width: 100%;
-  color: inherit; appearance: none;
+  color: inherit; appearance: none; transition: border-color 0.12s, color 0.12s;
 }
 .tile-link:hover { border-color: var(--series-1); }
+.tile-link:hover .value { color: var(--series-1); }
 .tile-link:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
-.tile-hint { font-size: 0.76rem; color: var(--series-1); margin-top: 2px; }
 
 .hero { font-size: 3rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
 
