@@ -4,3 +4,17 @@ __pycache__/
 .env
 generate_icon.py
 InstAnalyse/
+
+# ── Instagram exports and anything derived from them ──────────────────────
+# This repo is public. A data export contains recovery email, phone number,
+# date of birth, login IPs, device IDs, precise GPS coordinates and every
+# synced contact — none of it may ever be committed.
+*.zip
+instagram-*-*/
+insta-history*.json
+insta-metrics*.csv
+
+# Web tool build output and generated fixture (regenerate with
+# `node tools/make-fixture.mjs`).
+insta-web-analytics/dist/
+insta-web-analytics/fixtures/

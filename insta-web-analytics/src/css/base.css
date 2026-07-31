@@ -1,0 +1,328 @@
+/* base.css — design tokens, layout primitives, theming.
+ *
+ * Palette values come from the validated reference instance: the categorical
+ * slots clear the CVD, chroma, lightness and normal-vision gates in both modes
+ * (worst adjacent pair ΔE 9.2 light / 9.4 dark). Light-mode aqua sits below
+ * 3:1 on the surface, so charts using it must ship the table view — that is
+ * why every chart card has a table toggle rather than it being optional. */
+
+:root {
+  color-scheme: light;
+
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.04), 0 4px 16px rgba(11, 11, 11, 0.04);
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+
+  /* Sequential blue, light→dark, for the activity heatmap. */
+  --seq-100: #cde2fb;
+  --seq-250: #86b6ef;
+  --seq-400: #3987e5;
+  --seq-550: #1c5cab;
+  --seq-700: #0d366b;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --success-text: #006300;
+
+  --radius: 10px;
+  --gap: 16px;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --shadow: none;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --seq-100: #0d366b;
+    --seq-250: #184f95;
+    --seq-400: #256abf;
+    --seq-550: #3987e5;
+    --seq-700: #86b6ef;
+    --success-text: #0ca30c;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --shadow: none;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --seq-100: #0d366b;
+  --seq-250: #184f95;
+  --seq-400: #256abf;
+  --seq-550: #3987e5;
+  --seq-700: #86b6ef;
+  --success-text: #0ca30c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  background: var(--plane);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1, h2, h3 { line-height: 1.25; margin: 0; font-weight: 600; }
+h1 { font-size: 1.25rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.9rem; }
+p { margin: 0 0 0.75em; }
+a { color: var(--series-1); }
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 0 20px 80px; }
+
+/* ── header ─────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--plane) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
+.brand small { color: var(--text-muted); font-size: 0.75rem; }
+
+.btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 7px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--baseline); }
+.btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.btn-primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* ── drop zone ──────────────────────────────────────────────────────── */
+.intro { padding: 40px 0 0; }
+.dropzone {
+  border: 2px dashed var(--baseline);
+  border-radius: 14px;
+  background: var(--surface-1);
+  padding: 44px 24px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone.is-over { border-color: var(--series-1); background: color-mix(in srgb, var(--series-1) 6%, var(--surface-1)); }
+.dropzone h2 { margin-bottom: 8px; }
+.dropzone p { color: var(--text-secondary); max-width: 56ch; margin-inline: auto; }
+.dropzone-actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+.filechip {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.82rem; color: var(--text-secondary);
+  background: var(--plane); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 12px;
+}
+
+.guarantee {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px; margin-top: 24px;
+}
+.guarantee > div {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.guarantee strong { display: block; font-size: 0.85rem; margin-bottom: 3px; }
+.guarantee span { font-size: 0.8rem; color: var(--text-secondary); }
+
+/* ── progress ───────────────────────────────────────────────────────── */
+.progress { margin-top: 22px; }
+.progress-track { height: 5px; border-radius: 999px; background: var(--gridline); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--series-1); width: 0; transition: width 0.2s; }
+.progress-label { font-size: 0.82rem; color: var(--text-secondary); margin-top: 8px; }
+
+/* ── tabs ───────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: 2px; overflow-x: auto; padding: 10px 0 0;
+  scrollbar-width: thin;
+}
+.tab {
+  font: inherit; font-size: 0.85rem; white-space: nowrap;
+  padding: 8px 13px; border: 0; border-radius: 8px 8px 0 0;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--text-primary); }
+.tab[aria-selected='true'] { color: var(--text-primary); border-bottom-color: var(--series-1); font-weight: 600; }
+.tab:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+/* ── cards & tiles ──────────────────────────────────────────────────── */
+.grid { display: grid; gap: var(--gap); }
+.cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.cols-3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.cols-4 { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  min-width: 0;
+}
+.card > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.card > header h3 { margin-right: auto; }
+.card .sub { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px; }
+
+.tile { display: flex; flex-direction: column; gap: 2px; }
+.tile .label { font-size: 0.78rem; color: var(--text-secondary); }
+/* Proportional figures: tabular-nums makes a display-size number look loose. */
+.tile .value { font-size: 1.7rem; font-weight: 600; letter-spacing: -0.02em; }
+.tile .delta { font-size: 0.78rem; color: var(--text-muted); }
+.tile .delta.up { color: var(--success-text); }
+.tile .delta.down { color: var(--critical); }
+
+.hero { font-size: 3rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+
+/* ── tables ─────────────────────────────────────────────────────────── */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--gridline); }
+th {
+  font-weight: 600; color: var(--text-secondary); font-size: 0.78rem;
+  position: sticky; top: 0; background: var(--surface-1); cursor: pointer; white-space: nowrap;
+}
+th[aria-sort='ascending']::after { content: ' ↑'; }
+th[aria-sort='descending']::after { content: ' ↓'; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: color-mix(in srgb, var(--series-1) 5%, transparent); }
+.tablefilter {
+  font: inherit; font-size: 0.82rem; padding: 6px 10px; width: 100%; max-width: 260px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--plane); color: var(--text-primary); margin-bottom: 10px;
+}
+
+.handle { font-family: var(--mono); font-size: 0.82rem; }
+.muted { color: var(--text-muted); }
+.empty { color: var(--text-muted); font-size: 0.85rem; padding: 12px 0; }
+
+/* ── chart chrome ───────────────────────────────────────────────────── */
+.chart { width: 100%; display: block; overflow: visible; }
+.chart text { font-family: var(--sans); font-size: 10px; fill: var(--text-muted); }
+.chart .axis-line { stroke: var(--baseline); stroke-width: 1; }
+.chart .grid-line { stroke: var(--gridline); stroke-width: 1; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 0.78rem; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.chart-toggle { font-size: 0.75rem; padding: 3px 9px; }
+
+.tooltip {
+  position: fixed; z-index: 60; pointer-events: none;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 10px; font-size: 0.78rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18); max-width: 280px;
+  opacity: 0; transition: opacity 0.1s;
+}
+.tooltip.show { opacity: 1; }
+.tooltip b { font-weight: 600; }
+
+/* ── notices ────────────────────────────────────────────────────────── */
+.notice {
+  border-left: 3px solid var(--series-1); background: var(--surface-1);
+  border-radius: 0 var(--radius) var(--radius) 0; padding: 12px 16px;
+  font-size: 0.85rem; color: var(--text-secondary);
+  border-top: 1px solid var(--border); border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.notice strong { color: var(--text-primary); }
+.notice.warn { border-left-color: var(--warning); }
+.notice.danger { border-left-color: var(--critical); }
+
+.reminder {
+  position: sticky; bottom: 0; z-index: 30;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius); padding: 12px 16px; margin-top: var(--gap);
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.08); font-size: 0.85rem;
+}
+.reminder p { margin: 0; margin-right: auto; }
+
+/* The reminder is sticky, so the last of the panel would sit permanently
+ * behind it. Reserve its height only while it is actually shown. */
+#dashboard:has(.reminder:not([hidden])) #panel { padding-bottom: 84px; }
+
+.sev { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.sev-critical { background: var(--critical); }
+.sev-high { background: var(--serious); }
+.sev-medium { background: var(--warning); }
+.sev-low { background: var(--good); }
+
+.finding { display: flex; gap: 11px; padding: 12px 0; border-bottom: 1px solid var(--gridline); }
+.finding:last-child { border-bottom: 0; }
+.finding .sev { margin-top: 6px; }
+.finding h4 { margin: 0 0 3px; font-size: 0.88rem; font-weight: 600; }
+.finding p { margin: 0 0 4px; font-size: 0.83rem; color: var(--text-secondary); }
+.finding code { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); word-break: break-all; }
+
+.pill {
+  display: inline-block; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px;
+  background: var(--plane); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.pill.good { color: var(--success-text); border-color: currentColor; }
+
+.section { margin-top: 22px; }
+.section > h2 { margin-bottom: 4px; }
+.section > .sub { font-size: 0.83rem; color: var(--text-secondary); margin-bottom: 14px; max-width: 78ch; }
+
+@media (max-width: 640px) {
+  .shell { padding: 0 14px 60px; }
+  .hero { font-size: 2.2rem; }
+  .tile .value { font-size: 1.4rem; }
+}
+
+@media print {
+  .topbar, .tabs, .reminder, .chart-toggle { display: none; }
+}

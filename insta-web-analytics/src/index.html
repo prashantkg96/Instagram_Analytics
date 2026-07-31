@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instagram Export Analytics — offline, private</title>
+<meta name="description" content="Turn your official Instagram data export into a dashboard. Runs entirely in your browser: nothing is uploaded, nothing is stored.">
+<meta name="color-scheme" content="light dark">
+
+<!--
+  connect-src 'none' is the guarantee worth reading twice: the browser itself
+  blocks any network request this page might attempt, so "your data never
+  leaves your machine" is enforced rather than merely promised. Verify it by
+  opening DevTools → Network and processing an export — there are no entries.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' blob:;
+  worker-src 'self' blob:;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  font-src 'self';
+  manifest-src 'self';
+  connect-src 'none';
+  form-action 'none';
+  base-uri 'none'">
+
+<link rel="stylesheet" href="css/base.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <h1>Instagram Export Analytics</h1>
+      <small>runs offline · nothing uploaded</small>
+    </div>
+    <button class="btn" id="theme" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="shell">
+
+  <!-- ── intake ────────────────────────────────────────────────────────── -->
+  <div id="intro" class="intro">
+    <div class="dropzone" id="dropzone">
+      <h2>Drop your Instagram export here</h2>
+      <p>
+        The ZIP Instagram sends when you request your information. Add your previous
+        <code>insta-history-*.json</code> alongside it to see what changed since last time.
+      </p>
+      <div class="dropzone-actions">
+        <button class="btn" id="choose" type="button">Choose files</button>
+        <button class="btn btn-primary" id="analyse" type="button" disabled>Analyse</button>
+      </div>
+      <input id="picker" type="file" accept=".zip,.json" multiple hidden>
+      <div class="dropzone-actions" id="chosen"></div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <p class="progress-label" id="progress-label"></p>
+      </div>
+    </div>
+
+    <div id="intake-error" hidden></div>
+
+    <div class="guarantee">
+      <div>
+        <strong>Nothing is uploaded</strong>
+        <span>Your export is read in this tab. The page's security policy sets
+        <code>connect-src 'none'</code>, so the browser blocks network requests outright.</span>
+      </div>
+      <div>
+        <strong>Nothing is stored</strong>
+        <span>No cookies, no local storage, no database. Close the tab and every trace is gone —
+        which is why you download a history file to keep trends.</span>
+      </div>
+      <div>
+        <strong>Works with no internet</strong>
+        <span>Install it once and it runs offline, or use the single-file build that
+        opens straight from your disk.</span>
+      </div>
+      <div>
+        <strong>Media stays untouched</strong>
+        <span>Only the data manifests are read. Your photos and videos are skipped entirely —
+        about 90% of the archive is never decompressed.</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>How to get your export</h2>
+      <p class="sub">
+        Instagram → Settings → Accounts Centre → Your information and permissions → Download your information.
+        Choose <strong>JSON</strong> or HTML, <strong>All time</strong>, and request everything.
+        It arrives by email within a few hours to a few days. Both formats work here.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── dashboard ─────────────────────────────────────────────────────── -->
+  <div id="dashboard" hidden>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Analysis sections"></div>
+    <div id="panel" role="tabpanel" tabindex="0"></div>
+    <div class="reminder" id="reminder" hidden></div>
+  </div>
+
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

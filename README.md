@@ -17,6 +17,29 @@
 
 ---
 
+## Two tools in this repo
+
+They answer different questions from different data sources. Pick by what you need.
+
+| | [`insta-web-analytics/`](insta-web-analytics/) | this desktop app |
+|---|---|---|
+| **Data source** | your official Instagram data export (ZIP) | Instagram's private API via `instagrapi` |
+| **Credentials needed** | none | username + password |
+| **ToS / ban risk** | none | yes — see the disclaimer below |
+| **Runs offline** | yes, fully | no |
+| **Like/view counts, story viewers, giveaways** | no — absent from exports | **yes** |
+| **Follower join dates, growth attribution, cohorts** | **yes** | no |
+| **Ad exposure, off-platform tracking, DM stats, privacy audit** | **yes** | no |
+
+The web tool is a browser page — no install, no Python, nothing uploaded, nothing stored.
+Start there unless you specifically need live engagement data or the giveaway picker.
+
+> Meta does not put like counts, view counts or story viewers in data exports, so the web
+> tool derives growth from follower join dates instead. Its README explains exactly what is
+> and is not recoverable.
+
+---
+
 ## Features
 
 ### 📊 Dashboard & Follower Tracking
