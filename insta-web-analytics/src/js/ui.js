@@ -10,6 +10,12 @@ export function h(tag, attrs = {}, ...children) {
     if (key === 'class') node.className = value;
     else if (key === 'html') node.innerHTML = value;
     else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
+    // A style ATTRIBUTE is markup-origin and is blocked outright by a strict
+    // Content-Security-Policy (`style-src 'self'` without 'unsafe-inline') —
+    // silently: the attribute lands in the DOM and simply never applies.
+    // Writing through the CSSOM is not governed by style-src, so it works
+    // under the same policy. Prefer a class; this is the safety net.
+    else if (key === 'style') node.style.cssText = String(value);
     else node.setAttribute(key, value === true ? '' : String(value));
   }
   for (const child of children.flat()) {

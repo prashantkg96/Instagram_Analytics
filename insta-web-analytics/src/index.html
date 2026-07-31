@@ -45,57 +45,118 @@
 
   <!-- ── intake ────────────────────────────────────────────────────────── -->
   <div id="intro" class="intro">
-    <div class="dropzone" id="dropzone">
-      <h2>Drop your Instagram export here</h2>
-      <p>
-        The ZIP Instagram sends when you request your information. Add your previous
-        <code>insta-history-*.json</code> alongside it to see what changed since last time.
-      </p>
-      <div class="dropzone-actions">
-        <button class="btn" id="choose" type="button">Choose files</button>
-        <button class="btn btn-primary" id="analyse" type="button" disabled>Analyse</button>
-      </div>
-      <input id="picker" type="file" accept=".zip,.json" multiple hidden>
-      <div class="dropzone-actions" id="chosen"></div>
 
-      <div class="progress" id="progress" hidden>
-        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-        <p class="progress-label" id="progress-label"></p>
-      </div>
+    <p class="claim-note">
+      <span class="claim-lead">Your export never leaves your <span class="hl">device</span>.</span>
+      <span class="claim-sub">Read, parsed and charted entirely in this tab — nothing uploaded, nothing stored.</span>
+    </p>
+
+    <details class="steps-panel" id="steps">
+      <summary>How to get your Instagram export</summary>
+      <p class="sub">Instagram calls it "Download your information". It arrives by email.</p>
+      <ol class="steps">
+        <li>Instagram → <kbd>Settings and activity</kbd> → <kbd>Accounts Centre</kbd>.
+          <span class="hint">On a computer: accountscenter.instagram.com</span></li>
+        <li><kbd>Your information and permissions</kbd> → <kbd>Download your information</kbd>.</li>
+        <li><kbd>Download or transfer information</kbd>, then pick your account.</li>
+        <li><kbd>All available information</kbd> → <kbd>Download to device</kbd>.</li>
+        <li>Date range <kbd>All time</kbd>, format <kbd>JSON</kbd>, media quality <kbd>Low</kbd>.
+          <span class="hint">A narrower range truncates your history. Media can be Low — photos and
+            videos are never opened, so a smaller archive analyses identically.</span></li>
+        <li><kbd>Create files</kbd>, then wait for the email — hours, sometimes days.</li>
+        <li>Drop the <kbd>.zip</kbd> below, exactly as it arrived.</li>
+      </ol>
+    </details>
+
+    <div class="intake">
+      <section class="dropzone" id="drop-zip" aria-labelledby="drop-zip-title">
+        <p class="dropzone-head">
+          <span class="dropzone-title" id="drop-zip-title">Your Instagram export</span>
+          <span class="badge badge--required">Required</span>
+        </p>
+        <p class="dropzone-hint">The <kbd>.zip</kbd> Instagram emailed you.</p>
+        <div class="dropzone-actions">
+          <button class="btn" id="choose-zip" type="button">Choose file</button>
+        </div>
+        <input id="pick-zip" type="file" accept=".zip" hidden>
+        <div class="chips" id="chosen-zip"></div>
+      </section>
+
+      <section class="dropzone" id="drop-history" aria-labelledby="drop-history-title" hidden>
+        <p class="dropzone-head">
+          <span class="dropzone-title" id="drop-history-title">Compare with your last analysis</span>
+          <span class="badge">Optional</span>
+        </p>
+        <p class="dropzone-hint">
+          Add the <kbd>insta-history-*.json</kbd> you downloaded last time to see what changed —
+          who followed, who left, and every trend line.
+        </p>
+        <div class="dropzone-actions">
+          <button class="btn" id="choose-history" type="button">Choose file</button>
+        </div>
+        <input id="pick-history" type="file" accept=".json" hidden>
+        <div class="chips" id="chosen-history"></div>
+      </section>
+    </div>
+
+    <div class="dropzone-actions dropzone-actions--start analyse-row">
+      <button class="btn btn-primary" id="analyse" type="button" disabled>Analyse</button>
+    </div>
+
+    <div class="progress" id="progress" hidden>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <p class="progress-label" id="progress-label"></p>
     </div>
 
     <div id="intake-error" hidden></div>
 
-    <div class="guarantee">
-      <div>
-        <strong>Nothing is uploaded</strong>
-        <span>Your export is read in this tab. The page's security policy sets
-        <code>connect-src 'none'</code>, so the browser blocks network requests outright.</span>
+    <div class="features">
+      <div class="feature-tile">
+        <div class="feature-head">
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+          <h3>Nothing is uploaded</h3>
+        </div>
+        <p>Read in this tab. The browser blocks outbound requests outright.</p>
       </div>
-      <div>
-        <strong>Nothing is stored</strong>
-        <span>No cookies, no local storage, no database. Close the tab and every trace is gone —
-        which is why you download a history file to keep trends.</span>
+      <div class="feature-tile">
+        <div class="feature-head">
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M3 5v14a9 3 0 0 0 18 0V5"/>
+            <path d="M3 12a9 3 0 0 0 18 0"/>
+            <line x1="2" y1="2" x2="22" y2="22"/>
+          </svg>
+          <h3>Nothing is stored</h3>
+        </div>
+        <p>No cookies, no database. Close the tab and it's gone.</p>
       </div>
-      <div>
-        <strong>Works with no internet</strong>
-        <span>Install it once and it runs offline, or use the single-file build that
-        opens straight from your disk.</span>
+      <div class="feature-tile">
+        <div class="feature-head">
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/>
+          </svg>
+          <h3>No account access</h3>
+        </div>
+        <p>No password, no login, no unofficial API. Zero ban risk.</p>
       </div>
-      <div>
-        <strong>Media stays untouched</strong>
-        <span>Only the data manifests are read. Your photos and videos are skipped entirely —
-        about 90% of the archive is never decompressed.</span>
+      <div class="feature-tile">
+        <div class="feature-head">
+          <svg class="feature-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="2" y1="2" x2="22" y2="22"/>
+            <path d="M10.41 10.41a2 2 0 1 1-2.83-2.83"/>
+            <line x1="13.5" y1="13.5" x2="6" y2="21"/>
+            <path d="M3.59 3.59A2 2 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.05-.22 1.41-.59"/>
+            <path d="M21 15V5a2 2 0 0 0-2-2H9"/>
+          </svg>
+          <h3>Your media stays shut</h3>
+        </div>
+        <p>Only the data manifests are read — about 90% of the archive is skipped.</p>
       </div>
-    </div>
-
-    <div class="section">
-      <h2>How to get your export</h2>
-      <p class="sub">
-        Instagram → Settings → Accounts Centre → Your information and permissions → Download your information.
-        Choose <strong>JSON</strong> or HTML, <strong>All time</strong>, and request everything.
-        It arrives by email within a few hours to a few days. Both formats work here.
-      </p>
     </div>
   </div>
 

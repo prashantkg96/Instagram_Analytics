@@ -81,16 +81,37 @@ function initTheme() {
 }
 
 // ── file intake ────────────────────────────────────────────────────────────
+// Two zones, not one. The export is the only thing required to get a result;
+// the history file is a second, optional step that means nothing until there
+// is an export to compare it against — so it stays out of the way until one
+// has been chosen. Files are still routed by extension, so dropping both at
+// once, or dropping either on the wrong zone, does the sensible thing.
+const ZONES = [
+  { key: 'zip', zone: 'drop-zip', picker: 'pick-zip', button: 'choose-zip', chip: 'chosen-zip' },
+  { key: 'history', zone: 'drop-history', picker: 'pick-history', button: 'choose-history', chip: 'chosen-history' },
+];
+
 function describeFiles() {
-  const list = $('chosen');
-  list.replaceChildren();
-  if (state.zipFile) {
-    list.append(h('span', { class: 'filechip' },
-      `${state.zipFile.name} · ${(state.zipFile.size / 1048576).toFixed(0)} MB`));
+  const zipChip = $('chosen-zip');
+  if (zipChip) {
+    zipChip.replaceChildren(state.zipFile
+      ? h('span', { class: 'filechip' },
+        `${state.zipFile.name} · ${(state.zipFile.size / 1048576).toFixed(0)} MB`)
+      : '');
   }
-  if (state.historyFile) {
-    list.append(h('span', { class: 'filechip' }, `${state.historyFile.name} · previous analysis`));
+
+  const historyChip = $('chosen-history');
+  if (historyChip) {
+    historyChip.replaceChildren(state.historyFile
+      ? h('span', { class: 'filechip' }, `${state.historyFile.name} · previous analysis`)
+      : '');
   }
+
+  // Revealed by toggling `hidden`, never an inline style: a strict style-src
+  // blocks markup-origin styles, and `hidden` is the semantically right control.
+  const historyZone = $('drop-history');
+  if (historyZone) historyZone.hidden = !state.zipFile;
+
   $('analyse').disabled = !state.zipFile;
 }
 
@@ -107,18 +128,24 @@ async function acceptFiles(fileList) {
 }
 
 function initIntake() {
-  const zone = $('dropzone');
-  const picker = $('picker');
+  for (const spec of ZONES) {
+    const zone = $(spec.zone);
+    const picker = $(spec.picker);
+    const button = $(spec.button);
+    if (!zone || !picker || !button) continue;
 
-  ['dragenter', 'dragover'].forEach((type) =>
-    zone.addEventListener(type, (e) => { e.preventDefault(); zone.classList.add('is-over'); }));
-  ['dragleave', 'drop'].forEach((type) =>
-    zone.addEventListener(type, (e) => { e.preventDefault(); zone.classList.remove('is-over'); }));
-  zone.addEventListener('drop', (e) => acceptFiles(e.dataTransfer.files));
+    ['dragenter', 'dragover'].forEach((type) =>
+      zone.addEventListener(type, (e) => { e.preventDefault(); zone.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach((type) =>
+      zone.addEventListener(type, (e) => { e.preventDefault(); zone.classList.remove('is-over'); }));
+    zone.addEventListener('drop', (e) => acceptFiles(e.dataTransfer.files));
 
-  $('choose').addEventListener('click', () => picker.click());
-  picker.addEventListener('change', () => acceptFiles(picker.files));
+    button.addEventListener('click', () => picker.click());
+    picker.addEventListener('change', () => acceptFiles(picker.files));
+  }
+
   $('analyse').addEventListener('click', run);
+  describeFiles();
 }
 
 // ── run ────────────────────────────────────────────────────────────────────
@@ -255,13 +282,13 @@ function exportView(summary, results) {
       'The one to keep. Upload it with your next export to unlock trends. It holds your username, ' +
       'follower and following handles with their dates, per-day activity totals and your top creators — ' +
       'and none of your email, phone, IP addresses, device IDs, GPS coordinates or message text.',
-      h('div', { class: 'dropzone-actions', style: 'justify-content:flex-start' },
+      h('div', { class: 'dropzone-actions dropzone-actions--start' },
         h('button', { class: 'btn btn-primary', type: 'button', onclick: saveHistory },
           state.downloaded ? 'Download again' : 'Download history'))),
     card('Metric timeline (CSV)',
       'A flat row per snapshot for spreadsheets. Derived from the history file — it cannot be uploaded back, ' +
       'because flattening loses the follower lists the deltas are computed from.',
-      h('div', { class: 'dropzone-actions', style: 'justify-content:flex-start' },
+      h('div', { class: 'dropzone-actions dropzone-actions--start' },
         h('button', {
           class: 'btn',
           type: 'button',

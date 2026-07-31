@@ -111,7 +111,7 @@ export function audienceView(data, results) {
       tile('Fans', r.insights.fans, { sub: 'follow you, you don\'t follow back' }),
       tile('Follower / following', r.insights.followerFollowingRatio),
     ),
-    h('div', { class: 'grid cols-2', style: 'margin-top:16px' },
+    h('div', { class: 'grid cols-2 stack' },
       card("Don't follow you back", `${r.notFollowingBack.length} accounts you follow that don't follow you.`,
         table(peopleColumns, r.notFollowingBack, { filter: true })),
       card('Fans', `${r.fans.length} accounts following you that you don't follow back.`,
@@ -127,7 +127,7 @@ export function audienceView(data, results) {
         tile('Churn rate', pct(r.change.churnRate), { goodWhenUp: false }),
         tile('Retention', pct(r.change.retentionRate)),
       ),
-      h('div', { class: 'grid cols-2', style: 'margin-top:16px' },
+      h('div', { class: 'grid cols-2 stack' },
         card('Who unfollowed you', null, table(peopleColumns, r.change.unfollowers, { filter: true })),
         card('Who started following', null, table(peopleColumns, r.change.newFollowers, { filter: true })),
       ),
@@ -389,7 +389,7 @@ export function engagementView(data, results) {
       tile('You engage, they ignore', af.unreciprocated.length, { sub: 'no follow back from them', goodWhenUp: false }),
       tile('Engaged mutuals', af.mutualEngaged.length),
     ),
-    h('div', { class: 'grid cols-2', style: 'margin-top:16px' },
+    h('div', { class: 'grid cols-2 stack' },
       card('You follow, never engaged', null, table(
         [
           { key: 'u', label: 'Account', render: (v) => handle(v) },
