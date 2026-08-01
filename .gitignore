@@ -18,3 +18,7 @@ insta-metrics*.csv
 # `node tools/make-fixture.mjs`).
 insta-web-analytics/dist/
 insta-web-analytics/fixtures/
+
+# Knowledge-graph output (regenerate with `/graphify`). Derived from the repo,
+# and graph.json embeds source paths from whoever built it.
+graphify-out/

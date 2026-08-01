@@ -90,7 +90,13 @@ self.onmessage = async ({ data: message }) => {
 
     post({ type: 'progress', pct: 84, label: 'Computing analytics…' });
     const history = message.historyText ? parseHistory(message.historyText) : null;
-    const results = analyse(parsed, history);
+    // Names and sizes only, for the export passport. This is the whole archive
+    // listing including the media never decompressed, which is what lets the
+    // UI distinguish "you did nothing" from "Meta sent no file for this".
+    const results = analyse(parsed, history, {
+      manifest: entries.map((e) => ({ name: e.name, uncompressedSize: e.uncompressedSize })),
+      files,
+    });
 
     post({ type: 'progress', pct: 95, label: 'Building your history file…' });
     const snapshot = buildSnapshot(parsed, results);

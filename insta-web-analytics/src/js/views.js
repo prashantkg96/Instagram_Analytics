@@ -2,9 +2,10 @@
 
 import {
   h, fmt, pct, shortDate, duration, tile, table, card, chartCard, section, notice, handle, chip,
+  stateSwitch,
 } from './ui.js';
 import {
-  columnChart, stackedChart, lineChart, barsChart, heatmapChart, sparkline,
+  columnChart, stackedChart, lineChart, barsChart, heatmapChart, sparkline, arcGauge,
 } from './charts.js';
 import { goTo } from './nav.js';
 
@@ -19,6 +20,20 @@ const peopleColumns = [
 
 /** Wraps a card so an overview tile can scroll straight to it. */
 const anchored = (id, node) => h('div', { id }, node);
+
+/**
+ * A follow relationship as a switch.
+ *
+ * Untoned deliberately: following someone back is neither good nor bad, unlike
+ * a privacy setting. The switch is here for consistency with the settings
+ * tables, not to grade anyone.
+ *
+ * These come from set membership (affinity.js, fans.js, audience.js), so the
+ * sets are complete and a missing key genuinely means "no" — there is no third
+ * state to represent, which is why `binaryState` is not used here.
+ */
+const followSwitch = (value, label) =>
+  stateSwitch(['Yes', 'No'], value ? 'Yes' : 'No', { label });
 
 /**
  * Link one of your own posts.
@@ -103,6 +118,53 @@ function profileHeader(data) {
   );
 }
 
+/**
+ * The narrative opener: a few sentences, and one score with its workings.
+ *
+ * The "show the math" panel is not optional decoration. A score on a dial reads
+ * as authoritative whether or not it deserves to, so the inputs, their weights
+ * and their contributions sit one click away — and the copy says outright that
+ * this is not an Instagram metric.
+ */
+function atAGlance(results) {
+  const s = results.summary;
+  if (!s.sentences.length) return document.createDocumentFragment();
+
+  const prose = h('div', {}, ...s.sentences.map((line) => h('p', { class: 'sub' }, line)));
+
+  if (!s.grounded) {
+    // Too little parsed for a composite to mean anything — say the sentences
+    // and stop, rather than put a confident dial on top of two data points.
+    return section('At a glance', null, card(null, null, prose));
+  }
+
+  const math = h('details', { class: 'steps-panel' },
+    h('summary', {}, 'Show the math'),
+    h('p', { class: 'sub' },
+      'Each part scores 0–100 from your own export, then they are blended by weight and mapped onto ' +
+      `${s.min}–${s.max}. Anything your export does not cover is left out and the remaining weights ` +
+      'are shared over what is left, so a missing section never counts against you.'),
+    table(
+      [
+        { key: 'key', label: 'Input' },
+        { key: 'value', label: 'Scores', num: true, render: (v) => Math.round(v) },
+        { key: 'share', label: 'Weight', num: true, render: (v) => pct(v) },
+        { key: 'contributes', label: 'Contributes', num: true },
+        { key: 'detail', label: 'From' },
+      ],
+      s.breakdown,
+    ),
+  );
+
+  return section('At a glance', null,
+    h('div', { class: 'grid cols-2' },
+      card(null, null, prose),
+      card('Your export score', `${s.band} — not an Instagram metric, and not comparable between accounts.`,
+        arcGauge(s.score, { min: s.min, max: s.max, label: s.band }),
+        math),
+    ));
+}
+
 // ── Overview ───────────────────────────────────────────────────────────────
 export function overview(data, results) {
   const a = results.audience.insights;
@@ -120,6 +182,8 @@ export function overview(data, results) {
       'warn',
     ));
   }
+
+  frag.append(atAGlance(results));
 
   frag.append(section(null, null,
     h('div', { class: 'grid cols-4' },
@@ -232,7 +296,7 @@ export function audienceView(data, results) {
       tile('Fans', r.insights.fans, { sub: 'follow you, you don\'t follow back' }),
       tile('Follower / following', r.insights.followerFollowingRatio),
     ),
-    h('div', { class: 'grid cols-2 stack' },
+    h('div', { class: 'grid cols-2' },
       anchored('list-followers',
         card('Followers', `${r.followers.length} accounts.`,
           table(peopleColumns, r.followers, { filter: true }))),
@@ -259,7 +323,7 @@ export function audienceView(data, results) {
         tile('Churn rate', pct(r.change.churnRate), { goodWhenUp: false }),
         tile('Retention', pct(r.change.retentionRate)),
       ),
-      h('div', { class: 'grid cols-2 stack' },
+      h('div', { class: 'grid cols-2' },
         anchored('list-unfollowers',
           card('Who unfollowed you', null, table(peopleColumns, r.change.unfollowers, { filter: true }))),
         anchored('list-new-followers',
@@ -590,9 +654,12 @@ export function engagementView(data, results) {
   const af = results.affinity;
   const frag = document.createDocumentFragment();
 
+  // cols-3, not cols-4: six tiles under a 170px minimum pack six to a row and
+  // each one ends up too narrow for its label. The wider minimum gives four
+  // per row with room to read them.
   frag.append(section('Who you pay attention to',
     'Your data records no engagement received — only what you gave. This is that.',
-    h('div', { class: 'grid cols-4' },
+    h('div', { class: 'grid cols-3' },
       tile('Creators you engaged with', af.engagedCreators),
       tile('Creators you watched', af.watchedCreators, {
         sub: af.watchedCoverage ? `last ${af.watchedCoverage.days} days` : null,
@@ -637,8 +704,8 @@ export function engagementView(data, results) {
     [
       { key: 'u', label: 'Creator', render: (v) => handle(v) },
       { key: valueKey, label, num: true },
-      { key: 'youFollow', label: 'You follow', render: (v) => (v ? 'yes' : '—') },
-      { key: 'followsYou', label: 'Follows you', render: (v) => (v ? 'yes' : '—') },
+      { key: 'youFollow', label: 'You follow', render: (v) => followSwitch(v, 'You follow') },
+      { key: 'followsYou', label: 'Follows you', render: (v) => followSwitch(v, 'Follows you') },
     ],
     rows,
     { filter: true },
@@ -668,7 +735,7 @@ export function engagementView(data, results) {
       tile('You engage, they ignore', af.unreciprocated.length, { sub: 'no follow back from them', goodWhenUp: false }),
       tile('Engaged mutuals', af.mutualEngaged.length),
     ),
-    h('div', { class: 'grid cols-2 stack' },
+    h('div', { class: 'grid cols-2' },
       card('You follow, never engaged', null, table(
         [
           { key: 'u', label: 'Account', render: (v) => handle(v) },
@@ -716,12 +783,274 @@ export function engagementView(data, results) {
         { key: 'u', label: 'Account', render: (v) => handle(v) },
         { key: 'name', label: 'Name' },
         { key: 'at', label: 'Following you since', render: (v) => shortDate(v) },
-        { key: 'youFollow', label: 'You follow back', render: (v) => (v ? 'yes' : '—') },
+        { key: 'youFollow', label: 'You follow back', render: (v) => followSwitch(v, 'You follow back') },
       ],
       af.quietFollowers,
       { filter: true },
     )),
   ));
+  return frag;
+}
+
+// ── Fan followers ──────────────────────────────────────────────────────────
+//
+// The mirror of the tab above: people engaging with you, not the other way
+// round. Read fans.js before changing anything here — the honest scope of this
+// data is narrow, and the copy on this page is load-bearing rather than
+// decorative.
+export function fansView(data, results) {
+  const f = results.fans;
+  const frag = document.createDocumentFragment();
+
+  // Someone's display name, linked when it resolved to a handle and plain text
+  // when it did not. Never guess: an unresolved name is left unlinked.
+  const person = (row) => (row.u
+    ? handle(row.u)
+    : h('span', { title: 'No handle in your follower or following list matches this name' },
+      row.name));
+
+  if (!f.reliable) {
+    frag.append(section('Fan followers', null, notice(
+      '<strong>Cannot rank this export.</strong> Your display name is missing from it, so there is no way ' +
+      'to tell your own messages apart from everyone else\'s — every message would count as incoming. ' +
+      'Re-export with your profile information included.', 'danger',
+    )));
+    return frag;
+  }
+
+  frag.append(section('Who engages with you',
+    'From your inbox — the one place an export records other people acting toward you.',
+    h('div', { class: 'grid cols-4' },
+      tile('People who wrote to you', f.totals.people),
+      tile('Consistent', f.totals.consistent, {
+        sub: 'wrote in 3+ separate months',
+      }),
+      tile('Messages received', f.totals.messagesIn),
+      tile('Posts and reels sent to you', f.totals.sharesIn, {
+        sub: 'they shared content in your direction',
+      }),
+    ),
+  ));
+
+  // The single most important thing on this page. Stated before the leaderboard
+  // rather than under it, so nobody reads the ranking as something it is not.
+  frag.append(section(null, null, notice(
+    '<strong>Instagram does not export who liked, commented on or saved your posts.</strong> ' +
+    'Not in summary, not per post — every engagement file in the archive records something ' +
+    '<em>you</em> did. So this ranking is built from your inbox, which is where story replies and ' +
+    'shared reels arrive, and it is the only per-person record of inbound engagement that exists. ' +
+    'Totals for likes and replies your posts received are in <em>Reach &amp; insights</em>, if your ' +
+    'export includes them.',
+  )));
+
+  const fanColumns = [
+    { key: 'name', label: 'Person', render: (v, row) => person(row) },
+    { key: 'score', label: 'Fan score', num: true },
+    { key: 'received', label: 'Messages', num: true },
+    { key: 'shares', label: 'Sent you', num: true },
+    { key: 'openedByThem', label: 'They started', num: true },
+    { key: 'months', label: 'Months active', num: true },
+    { key: 'last', label: 'Last heard', render: (v) => shortDate(v) },
+  ];
+
+  frag.append(section(null, null, chartCard(
+    'Fan followers',
+    `Inbound only — nothing you did counts toward this. Weighted: conversation they started ` +
+    `×${f.weights.opened}, post or reel they sent ×${f.weights.share}, message ×${f.weights.message}, ` +
+    'plus a bonus for writing across many months. Group chats are excluded.',
+    barsChart(f.fans.slice(0, 12).map((r) => ({ key: r.u ?? r.name, count: r.score })), { label: 'fan score' }),
+    { tableView: () => table(fanColumns, f.fans, { filter: true }) },
+  )));
+
+  frag.append(section('Closest accounts',
+    'Two-way: their inbound score plus your own engagement with them, for people who follow you back. ' +
+    'This is as near as an export gets to "who consistently engages with my content".',
+    card(null,
+      f.totals.resolvedPct < 100
+        ? `${f.totals.resolvedPct}% of the people who message you could be matched to a handle — ` +
+          'only those can appear here, because your side of the score is keyed by username.'
+        : null,
+      table(
+        [
+          { key: 'u', label: 'Account', render: (v) => handle(v) },
+          { key: 'combined', label: 'Combined', num: true },
+          { key: 'score', label: 'Their side', num: true },
+          { key: 'yourScore', label: 'Your side', num: true },
+          { key: 'months', label: 'Months active', num: true },
+          { key: 'youFollow', label: 'You follow back', render: (v) => followSwitch(v, 'You follow back') },
+        ],
+        f.closest,
+        { filter: true },
+      )),
+  ));
+
+  if (f.totals.groupThreads) {
+    frag.append(section(null, null, notice(
+      `<strong>${fmt(f.totals.groupThreads)} group chats were left out.</strong> A group thread names ` +
+      'only whoever spoke first, so counting one would credit every message in it to a single ' +
+      'arbitrary person.',
+    )));
+  }
+  return frag;
+}
+
+/**
+ * What Meta actually sent — folders, sizes, and the files that are absent.
+ *
+ * Exported for the Export tab, which is where the archive is already the
+ * subject. Returns nothing when the dataset came from a directory rather than a
+ * ZIP, since there is no central directory to report on.
+ */
+export function passportSection(results) {
+  const p = results.passport;
+  if (!p) return document.createDocumentFragment();
+  const frag = document.createDocumentFragment();
+
+  frag.append(section('What Meta actually sent',
+    'The archive itself, not what is in it. Every number in this dashboard traces back to one of ' +
+    'these files.',
+    h('div', { class: 'grid cols-4' },
+      tile('Files in the archive', p.totals.entries, { sub: `${p.totals.megabytes} MB uncompressed` }),
+      tile('Data files', p.totals.dataFiles, { sub: 'the rest is media' }),
+      tile('Read by this tool', p.totals.parsed, {
+        sub: `${Math.max(0, p.totals.entries - p.totals.parsed)} never opened`,
+      }),
+      tile('Expected but absent', p.totals.missing, { goodWhenUp: false }),
+    ),
+  ));
+
+  frag.append(section(null, null, h('div', { class: 'grid cols-2' },
+    card('Folders', 'Largest first.', table(
+      [
+        { key: 'key', label: 'Folder' },
+        { key: 'count', label: 'Files', num: true },
+        { key: 'data', label: 'Data', num: true },
+        { key: 'megabytes', label: 'MB', num: true },
+      ],
+      p.folders,
+    )),
+    card('Files Meta left out',
+      p.missing.length
+        ? 'Sections of this dashboard that will read empty — because the file is absent, not because ' +
+          'you did nothing.'
+        : 'Nothing this tool looks for is missing.',
+      table(
+        [{ key: 'file', label: 'Expected file' }, { key: 'needed', label: 'Used for' }],
+        p.missing,
+        { empty: 'Your export is complete.' },
+      )),
+  )));
+  return frag;
+}
+
+// ── Reach & insights ───────────────────────────────────────────────────────
+//
+// Only rendered when `results.insights` is non-null — see the `when` guard on
+// the tab in main.js. Personal-account exports contain none of this.
+export function insightsView(data, results) {
+  const ins = results.insights;
+  const frag = document.createDocumentFragment();
+  const m = ins.metrics;
+  const r = ins.ratios;
+
+  const window = ins.period.start && ins.period.end
+    ? `${shortDate(ins.period.start)} → ${shortDate(ins.period.end)}`
+    : 'Instagram did not date this block';
+
+  // A metric that is absent and one that is genuinely zero are different
+  // things, and a creator would act on them differently. Absent stays blank.
+  const stat = (label, value, opts) => tile(label, value ?? '—', opts);
+
+  frag.append(section('What your content did',
+    `Engagement your posts received, as Instagram counted it. ${window}.`,
+    h('div', { class: 'grid cols-4' },
+      stat('Accounts reached', m.reach),
+      stat('Impressions', m.impressions),
+      stat('Profile visits', m.profileVisits),
+      stat('Accounts engaged', m.accountsEngaged),
+      stat('Total interactions', m.totalInteractions),
+      stat('Post likes', m.postLikes),
+      stat('Story interactions', m.storyInteractions),
+      stat('Story replies', m.storyReplies, {
+        sub: m.storyReplies !== null ? 'the per-person list is in Fan followers' : null,
+      }),
+    ),
+  ));
+
+  if (!ins.recognised) {
+    frag.append(section(null, null, notice(
+      '<strong>Creator stats were found but not recognised.</strong> The labels in your export do not ' +
+      'match any this build knows. Everything read out of those files is listed at the bottom of this ' +
+      'page — nothing has been discarded.', 'warn',
+    )));
+  }
+
+  // Only the engagement rate is a share of a whole; the rest can legitimately
+  // exceed their denominator, so they are multiples. See insights.js.
+  const ratioRows = [
+    { k: 'Engagement rate', v: r.engagementRate, s: 'accounts engaged ÷ accounts reached', share: true },
+    { k: 'Seen per account', v: r.frequency, s: 'impressions ÷ accounts reached' },
+    { k: 'Reach vs your followers', v: r.reachVsFollowers, s: 'accounts reached ÷ your follower list' },
+    { k: 'Profile visits per account reached', v: r.visitsPerReach, s: 'profile visits ÷ accounts reached' },
+    { k: 'Interactions per account reached', v: r.interactionsPerReach, s: 'total interactions ÷ accounts reached' },
+  ].filter((row) => row.v !== null);
+
+  if (ratioRows.length) {
+    frag.append(section('The ratios that matter',
+      'Computed only where both inputs are present — a missing input leaves the row out rather than ' +
+      'showing a zero you might act on.',
+      card(null, null, table(
+        [
+          { key: 'k', label: 'Ratio' },
+          { key: 'v', label: 'Value', num: true, render: (v, row) => (row.share ? pct(v) : `${v}×`) },
+          { key: 's', label: 'How it is worked out' },
+        ],
+        ratioRows,
+      )),
+    ));
+  }
+
+  const d = ins.demographics;
+  const demoCards = [];
+  if (d.age.length) {
+    demoCards.push(chartCard('Follower age', 'Share of your followers in each bracket.',
+      columnChart(d.age, { label: '%' }), { tableView: countTable(d.age, 'Age', 'Share %') }));
+  }
+  if (d.gender.length) {
+    demoCards.push(chartCard('Follower gender', 'As Instagram categorises it.',
+      barsChart(d.gender, { label: '%' }), { tableView: countTable(d.gender, 'Gender', 'Share %') }));
+  }
+  if (d.cities.length) {
+    demoCards.push(chartCard('Top cities', 'Where your followers say they are.',
+      barsChart(d.cities, { label: '%' }), { tableView: countTable(d.cities, 'City', 'Share %') }));
+  }
+  if (d.countries.length) {
+    demoCards.push(chartCard('Top countries', null,
+      barsChart(d.countries, { label: '%' }), { tableView: countTable(d.countries, 'Country', 'Share %') }));
+  }
+  if (demoCards.length) {
+    frag.append(section('Who your followers are',
+      'Instagram only reports this in aggregate — there are no usernames attached to any of it.',
+      h('div', { class: 'grid cols-2' }, ...demoCards)));
+  }
+
+  if (ins.extra.length) {
+    frag.append(section('Everything else in those files',
+      `${ins.extra.length} values this build has no name for. Listed so nothing your export contains ` +
+      'is silently dropped.',
+      card(null, null, table(
+        [{ key: 'key', label: 'Label' }, { key: 'value', label: 'Value' }],
+        ins.extra,
+        { filter: ins.extra.length > 15, limit: 120 },
+      )),
+    ));
+  }
+
+  if (ins.sources.length) {
+    frag.append(section(null, null, card('Read from',
+      'The files these numbers came out of.',
+      table([{ key: 'k', label: 'File' }], ins.sources.map((k) => ({ k }))))));
+  }
   return frag;
 }
 
@@ -751,7 +1080,7 @@ export function consumptionView(data, results) {
         }),
         tile('Posts you dismissed', disc.dismissedPosts),
       ),
-      h('div', { class: 'grid cols-2 stack' },
+      h('div', { class: 'grid cols-2' },
         card('Suggested to you', null, table(
           [
             { key: 'u', label: 'Account', render: (v) => handle(v) },
@@ -823,6 +1152,62 @@ export function adsView(data, results) {
       }),
     ),
   ));
+
+  // ── ad pressure ──
+  // The same numbers as above, put the way round a reader can feel. A share of
+  // 16% and "one in every six" are identical facts with very different weight.
+  const p = a.pressure;
+  const pressureTiles = [];
+  if (p.oneInEvery) {
+    pressureTiles.push(tile('One ad in every', p.oneInEvery, {
+      sub: 'things Instagram showed you', goodWhenUp: false,
+    }));
+  }
+  pressureTiles.push(tile('Brands that ran ads at you', p.brands, { goodWhenUp: false }));
+  if (p.topBrand) {
+    pressureTiles.push(tile('Most repeated brand', p.topBrand.count, {
+      sub: `${p.topBrand.key} — concentration, not variety`, goodWhenUp: false,
+    }));
+  }
+  if (p.brands) {
+    // Meta's own "advertisers using your activity" list is not the same set as
+    // the brands that actually reached you, and the gap is usually the story.
+    pressureTiles.push(tile('Not on your advertiser list', p.brandsNotOnList, {
+      sub: `of ${p.brands} — they reached you another way`, goodWhenUp: false,
+    }));
+  }
+  if (pressureTiles.length > 1) {
+    // This row is 2–4 tiles depending on what the export carries. Two tiles in
+    // a cols-4 grid stretch to half the page each, which reads as a layout
+    // error rather than a pair of numbers — so the column minimum tracks the
+    // count instead of being fixed.
+    const pressureCols = pressureTiles.length <= 2 ? 'cols-2' : 'cols-4';
+    frag.append(section('The pressure on your feed',
+      a.adShareWindow
+        ? `Over the ${a.adShareWindow.days} days your ad log and viewing history both cover.`
+        : null,
+      h('div', { class: `grid ${pressureCols}` }, ...pressureTiles)));
+  }
+
+  if (p.densest && p.byDaypart.some((b) => b.seen > 0)) {
+    frag.append(section(null, null, chartCard(
+      'When your feed is most paid',
+      `Share of everything you saw that was an ad, by time of day. Heaviest in the ` +
+      `${p.densest.key.toLowerCase()} at ${pct(p.densest.count)}.`,
+      columnChart(p.byDaypart, { label: '% ads' }),
+      {
+        tableView: () => table(
+          [
+            { key: 'key', label: 'Time of day' },
+            { key: 'count', label: 'Ads %', num: true, render: (v) => pct(v) },
+            { key: 'ads', label: 'Ads', num: true },
+            { key: 'seen', label: 'Total seen', num: true },
+          ],
+          p.byDaypart,
+        ),
+      },
+    )));
+  }
 
   if (a.daily.length > 1) {
     frag.append(section(null, null, chartCard('Ads seen per day', null,
@@ -929,10 +1314,15 @@ export function privacyView(data, results) {
       [
         { key: 'label', label: 'Setting' },
         {
-          key: 'value',
+          key: 'state',
           label: 'Current',
-          render: (v, row) => h('span', { class: `pill ${row.good ? 'good' : ''}` },
-            typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v)),
+          // `good` is null when the export did not say, and the switch is left
+          // untoned — an unknown setting is neither reassuring nor alarming.
+          render: (v, row) => stateSwitch(row.options, v, {
+            label: row.label,
+            tone: row.good === null ? null : (row.good ? 'good' : 'bad'),
+            raw: row.raw,
+          }),
         },
       ],
       p.settings,
@@ -952,7 +1342,12 @@ export function privacyView(data, results) {
           goodWhenUp: false,
         }),
         tile('Notifications off', `${p.notifications.off} of ${p.notifications.total}`, {
-          sub: 'push and email settings',
+          // Rows whose value is neither on nor off are named rather than
+          // folded into one side of the count — several notification settings
+          // hold an audience, not a switch.
+          sub: p.notifications.unclassified
+            ? `${p.notifications.unclassified} not a simple on/off`
+            : 'push and email settings',
         }),
       ),
       p.notifications.rows.length
@@ -961,9 +1356,19 @@ export function privacyView(data, results) {
               { key: 'channel', label: 'Channel' },
               { key: 'type', label: 'Notification' },
               {
-                key: 'value',
+                key: 'state',
                 label: 'State',
-                render: (v) => h('span', { class: `pill ${/off|false/i.test(v ?? '') ? '' : 'good'}` }, String(v ?? '—')),
+                // `state` is true/false/null from binaryState. A row Meta wrote
+                // as an audience rather than a switch lands on null and shows
+                // its literal value — previously those rendered as a green
+                // tick, asserting "on" for something that was never a toggle.
+                render: (v, row) => stateSwitch(['On', 'Off'],
+                  v === null ? null : (v ? 'On' : 'Off'),
+                  {
+                    label: [row.channel, row.type].filter(Boolean).join(' — '),
+                    tone: v === null ? null : (v ? null : 'good'),
+                    raw: v === null ? (row.value ?? 'not stated') : null,
+                  }),
               },
             ],
             p.notifications.rows,

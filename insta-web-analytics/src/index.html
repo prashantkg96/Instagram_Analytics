@@ -163,8 +163,10 @@
 
   <!-- ── dashboard ─────────────────────────────────────────────────────── -->
   <div id="dashboard" hidden>
-    <div class="tabs" id="tabs" role="tablist" aria-label="Analysis sections"></div>
-    <div id="panel" role="tabpanel" tabindex="0"></div>
+    <!-- Navigation, not a tablist: the bar groups sections behind menus (see
+         GROUPS in main.js) and a tablist may only contain tabs. -->
+    <div class="tabs" id="tabs" role="navigation" aria-label="Analysis sections"></div>
+    <div id="panel" role="region" aria-label="Analysis" tabindex="0"></div>
     <div class="reminder" id="reminder" hidden></div>
   </div>
 

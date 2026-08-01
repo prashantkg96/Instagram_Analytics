@@ -30,6 +30,7 @@ const SHELL = [
   './js/parsers/ads.js',
   './js/parsers/messages.js',
   './js/parsers/security.js',
+  './js/parsers/insights.js',
   './js/parsers/json.js',
   './js/analytics/index.js',
   './js/analytics/util.js',
@@ -37,10 +38,14 @@ const SHELL = [
   './js/analytics/attribution.js',
   './js/analytics/content.js',
   './js/analytics/affinity.js',
+  './js/analytics/fans.js',
+  './js/analytics/insights.js',
   './js/analytics/consumption.js',
   './js/analytics/ads.js',
   './js/analytics/messages.js',
   './js/analytics/privacy.js',
+  './js/analytics/summary.js',
+  './js/analytics/passport.js',
   './js/analytics/trends.js',
 ];
 

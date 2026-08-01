@@ -261,26 +261,61 @@ a { color: var(--series-1); }
 .progress-label { font-size: 0.82rem; color: var(--text-secondary); margin-top: 8px; }
 
 /* ── tabs ───────────────────────────────────────────────────────────── */
+/*
+ * Sections are grouped into menus (see GROUPS in main.js) so the bar fits on
+ * one line. It wraps rather than scrolls: a horizontal scroller hid whole
+ * sections behind a gesture most people never try, and on a narrow screen it
+ * put a second scrollbar inside a page that already had one.
+ */
 .tabs {
-  display: flex; gap: 2px; overflow-x: auto; padding: 10px 0 0;
-  scrollbar-width: thin;
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 10px 0 0;
+  border-bottom: 1px solid var(--gridline);
 }
 .tab {
   font: inherit; font-size: 0.85rem; white-space: nowrap;
   padding: 8px 13px; border: 0; border-radius: 8px 8px 0 0;
   background: transparent; color: var(--text-secondary); cursor: pointer;
-  border-bottom: 2px solid transparent;
+  /* The underline sits ON the bar's own rule rather than under it, so the
+     selected tab reads as one line and not two stacked ones. */
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .tab:hover { color: var(--text-primary); }
-.tab[aria-selected='true'] { color: var(--text-primary); border-bottom-color: var(--series-1); font-weight: 600; }
+.tab[aria-current='true'],
+.tab.is-active { color: var(--text-primary); border-bottom-color: var(--series-1); font-weight: 600; }
 .tab:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+.tabgroup { position: relative; display: flex; }
+/* The caret is generated, not markup: a strict style-src blocks inline styles
+   and this keeps the trigger a plain text button. */
+.tab-parent::after {
+  content: '▾'; font-size: 0.7em; margin-left: 6px; opacity: 0.75;
+}
+.tab-parent[aria-expanded='true']::after { opacity: 1; }
+
+.tabmenu {
+  display: none; position: absolute; top: 100%; left: 0; z-index: 40;
+  min-width: 190px; padding: 5px; margin-top: 1px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+.tab-parent[aria-expanded='true'] + .tabmenu { display: block; }
+
+.tabitem {
+  display: block; width: 100%; text-align: left; font: inherit;
+  font-size: 0.85rem; padding: 7px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  white-space: nowrap;
+}
+.tabitem:hover { background: color-mix(in srgb, var(--series-1) 8%, transparent); color: var(--text-primary); }
+.tabitem[aria-current='true'] { color: var(--series-1); font-weight: 600; }
+.tabitem:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+/* A menu that opens past the right edge would be unreachable, so the last
+   group in the bar hangs its panel from the right instead. */
+.tabgroup:last-child .tabmenu { left: auto; right: 0; }
 
 /* ── cards & tiles ──────────────────────────────────────────────────── */
 .grid { display: grid; gap: var(--gap); }
-/* Separates a block from the one above it. A class rather than a style
- * attribute on purpose: a strict `style-src` blocks markup-origin styles
- * outright, and silently — the attribute lands in the DOM but never applies. */
-.stack { margin-top: var(--gap); }
 .cols-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .cols-3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .cols-4 { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
@@ -408,6 +443,11 @@ tbody tr:hover { background: color-mix(in srgb, var(--series-1) 5%, transparent)
 .chart text { font-family: var(--sans); font-size: 13px; fill: var(--text-muted); }
 .chart .axis-line { stroke: var(--baseline); stroke-width: 1; }
 .chart .grid-line { stroke: var(--gridline); stroke-width: 1; }
+/* The one number a gauge exists to show; everything else on it is a label. */
+.chart text.gauge-value {
+  font-size: 2rem; font-weight: 650; fill: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
 
 .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; font-size: 0.78rem; color: var(--text-secondary); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -473,9 +513,51 @@ tbody tr:hover { background: color-mix(in srgb, var(--series-1) 5%, transparent)
 }
 .pill.good { color: var(--success-text); border-color: currentColor; }
 
+/* ── state switch ───────────────────────────────────────────────────── */
+/*
+ * A setting's value, drawn as a disabled segmented switch (see stateSwitch in
+ * ui.js). Not interactive: this is a read of an export, not a control panel.
+ * Both labels stay legible because the active one is marked by fill AND by
+ * weight/colour contrast, so it survives greyscale and print.
+ */
+.switch {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px; border-radius: 999px;
+  background: var(--plane); border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.switch-opt {
+  font-size: 0.72rem; line-height: 1.5; padding: 1px 9px; border-radius: 999px;
+  color: var(--text-muted); white-space: nowrap;
+}
+.switch-opt.is-active { background: var(--text-secondary); color: var(--surface-1); font-weight: 600; }
+.switch.is-good .switch-opt.is-active { background: var(--good); color: #fff; }
+.switch.is-bad .switch-opt.is-active { background: var(--critical); color: #fff; }
+/* Unknown: no segment claims to be the answer. */
+.switch.is-unknown { border-style: dashed; }
+.switch.is-unknown .switch-opt { opacity: 0.55; }
+
+.switch-wrap { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.switch-raw { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); }
+
 .section { margin-top: 22px; }
 .section > h2 { margin-bottom: 4px; }
 .section > .sub { font-size: 0.83rem; color: var(--text-secondary); margin-bottom: 14px; max-width: 78ch; }
+/*
+ * Space between a section's content blocks.
+ *
+ * `section()` spreads its children as bare siblings, so a section holding two
+ * grids — or a grid then a card — used to render them touching with a 0px gap,
+ * two bordered panels welding into one slab. Four sections shipped that way
+ * (Growth twice, Posts, Privacy audit) because the old fix was an opt-in
+ * `.stack` class that is easy to forget. This makes the spacing structural, so
+ * a new section cannot reintroduce the bug.
+ *
+ * The h2/.sub exclusions matter: the heading and subtitle carry their own
+ * margin-bottom above, and a blanket `* + *` would push the subtitle away from
+ * its heading. Scoped with `>` so a `.sub` inside a nested card is untouched.
+ */
+.section > :not(h2):not(.sub) + :not(h2):not(.sub) { margin-top: var(--gap); }
 
 @media (max-width: 640px) {
   .shell { padding: 0 14px 60px; }
