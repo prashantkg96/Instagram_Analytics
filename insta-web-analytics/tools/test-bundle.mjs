@@ -20,7 +20,16 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 if (!script) throw new Error('no inline script in the built file');
 
 // Pull the worker source back out of the string constant the build embedded.
-const workerSource = new Function(`${script.match(/const BUNDLED_WORKER = ("[\s\S]*?");/)[0]}\nreturn BUNDLED_WORKER;`)();
+//
+// The pattern must understand backslash escapes. A lazy `"[\s\S]*?"` stops at
+// the first `";` it sees — and JSON.stringify turns any double-quoted string in
+// the worker source into `\"…\"`, so a single line like `carry "on"/"off";`
+// inside a comment truncated the match and produced an unterminated literal.
+// `(?:[^"\\]|\\.)*` skips escaped characters, which is the actual grammar of a
+// JSON string.
+const workerSource = new Function(
+  `${script.match(/const BUNDLED_WORKER = ("(?:[^"\\]|\\.)*");/)[0]}\nreturn BUNDLED_WORKER;`,
+)();
 console.log(`worker bundle: ${(workerSource.length / 1024).toFixed(0)} KB`);
 
 // Minimal worker-global shim: the bundle only touches self.onmessage,

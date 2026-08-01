@@ -9,6 +9,7 @@ import { parseConsumption } from './consumption.js';
 import { parseAds } from './ads.js';
 import { parseMessages } from './messages.js';
 import { parseSecurity } from './security.js';
+import { parseInsights } from './insights.js';
 import { parseJsonExport } from './json.js';
 
 /** Which export format a file set is in. Meta offers HTML or JSON. */
@@ -35,9 +36,14 @@ export function parseExport(files) {
     );
   }
 
+  // Creator stats read the same either way — the parser matches field labels
+  // rather than markup — so it runs once here for both formats instead of being
+  // duplicated into the JSON adapter. Null for personal accounts.
+  const insights = parseInsights(files);
+
   // JSON exports are a different serialization of the same data, so that
   // adapter builds this exact dataset shape itself rather than faking markup.
-  if (format === 'json') return parseJsonExport(files);
+  if (format === 'json') return Object.assign(parseJsonExport(files), { insights });
 
   const profile = parseProfile(files);
   const connections = parseConnections(files);
@@ -53,6 +59,7 @@ export function parseExport(files) {
     ads: parseAds(files),
     messages: parseMessages(files, profile.name),
     security: parseSecurity(files),
+    insights,
   };
 
   // What each section actually covers. Instagram's retention limits differ wildly

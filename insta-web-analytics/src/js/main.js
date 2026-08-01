@@ -5,22 +5,60 @@ import { hideTip } from './charts.js';
 import { serializeHistory, historyToCsv, historyFilename } from './history.js';
 import { setNavigator } from './nav.js';
 import {
-  overview, audienceView, growthView, contentView, engagementView,
-  consumptionView, adsView, messagesView, privacyView, trendsView,
+  overview, audienceView, growthView, contentView, engagementView, fansView,
+  insightsView, consumptionView, adsView, messagesView, privacyView, trendsView,
+  passportSection,
 } from './views.js';
 
+// Tab order is display order. `when` is optional: a tab that returns false is
+// dropped from the bar entirely rather than rendered empty, because a section
+// whose source files are absent from the export has nothing honest to show.
+//
+// `group` is what keeps the bar to one line. Thirteen flat tabs overflowed into
+// a horizontal scroller, which hides sections behind a gesture nobody makes —
+// so each tab names the menu it belongs to, and GROUPS below sets their order.
+// A tab with no group stays a plain top-level button.
 const TABS = [
   { id: 'overview', name: 'Overview', render: overview },
-  { id: 'audience', name: 'Audience', render: audienceView },
-  { id: 'growth', name: 'Growth', render: growthView },
-  { id: 'content', name: 'Content', render: contentView },
-  { id: 'engagement', name: 'Your engagement', render: engagementView },
-  { id: 'consumption', name: 'Consumption', render: consumptionView },
-  { id: 'ads', name: 'Ads & tracking', render: adsView },
-  { id: 'messages', name: 'Messages', render: messagesView },
-  { id: 'privacy', name: 'Privacy audit', render: privacyView },
-  { id: 'trends', name: 'Trends', render: trendsView },
-  { id: 'export', name: 'Export', render: exportView },
+
+  { id: 'audience', name: 'Audience', group: 'people', render: audienceView },
+  { id: 'growth', name: 'Growth', group: 'people', render: growthView },
+  { id: 'fans', name: 'Fan followers', group: 'people', render: fansView },
+
+  { id: 'content', name: 'Posts', group: 'content', render: contentView },
+  {
+    id: 'reach',
+    name: 'Reach & insights',
+    group: 'content',
+    render: insightsView,
+    // Professional accounts only. A personal export ships none of these files,
+    // and an empty tab reads as a broken feature rather than an absent one.
+    when: (summary, results) => Boolean(results.insights),
+  },
+
+  { id: 'engagement', name: 'Engagement', group: 'activity', render: engagementView },
+  { id: 'consumption', name: 'Consumption', group: 'activity', render: consumptionView },
+  { id: 'messages', name: 'Messages', group: 'activity', render: messagesView },
+
+  { id: 'ads', name: 'Ads & tracking', group: 'exposure', render: adsView },
+  { id: 'privacy', name: 'Privacy audit', group: 'exposure', render: privacyView },
+
+  { id: 'trends', name: 'Trends', group: 'data', render: trendsView },
+  { id: 'export', name: 'Export', group: 'data', render: exportView },
+];
+
+/**
+ * Menu labels, in bar order. Split by whose behaviour each section describes —
+ * your audience, your posts, what you did, what was done to you — rather than
+ * by which file the numbers came from, which is an implementation detail the
+ * reader has no reason to know.
+ */
+const GROUPS = [
+  { id: 'people', name: 'Audience' },
+  { id: 'content', name: 'Your content' },
+  { id: 'activity', name: 'Your activity' },
+  { id: 'exposure', name: 'Exposure' },
+  { id: 'data', name: 'Your data' },
 ];
 
 const state = {
@@ -200,6 +238,7 @@ function run() {
       stats: message.stats,
       downloaded: false,
     });
+    announce();
     showDashboard();
   };
 
@@ -217,35 +256,154 @@ function run() {
   worker.postMessage({ file: state.zipFile, historyText: state.historyText });
 }
 
+/**
+ * Tell the host page an analysis finished.
+ *
+ * This dispatches a DOM event and nothing else — no fetch, no storage. The
+ * engine stays network-free, which is what lets the standalone build keep
+ * `connect-src 'none'`; there, the event simply fires with nobody listening.
+ * A host that wants to count usage attaches its own listener and owns that
+ * request, so the decision lives with the site rather than in here.
+ */
+function announce() {
+  const profile = state.summary?.profile;
+  if (!profile) return;
+  document.dispatchEvent(new CustomEvent('ia:analysis', {
+    detail: { username: profile.username ?? null, name: profile.name ?? null },
+  }));
+}
+
 // ── dashboard ──────────────────────────────────────────────────────────────
+/** Tabs with something to show for this particular export. */
+function visibleTabs() {
+  return TABS.filter((tab) => !tab.when || tab.when(state.summary, state.results));
+}
+
+/**
+ * One tab button. Used both at the top level and inside a menu.
+ *
+ * These are navigation buttons, not ARIA `tab`s. Once sections are grouped
+ * behind menus the bar stops being a tablist — a tablist may only contain
+ * tabs, and a menu trigger is not one — so the whole bar is a navigation
+ * landmark and the current section is marked with `aria-current`.
+ */
+function tabButton(tab, inMenu) {
+  return h('button', {
+    class: inMenu ? 'tabitem' : 'tab',
+    type: 'button',
+    id: `tab-${tab.id}`,
+    'aria-current': tab.id === state.active ? 'true' : null,
+    'aria-controls': 'panel',
+    onclick: () => {
+      closeMenus();
+      renderTab(tab.id);
+    },
+  }, tab.name);
+}
+
+/** Collapse any open menu. Called on selection, Escape, and outside clicks. */
+function closeMenus(except) {
+  for (const trigger of document.querySelectorAll('#tabs .tab-parent[aria-expanded="true"]')) {
+    if (trigger === except) continue;
+    trigger.setAttribute('aria-expanded', 'false');
+  }
+}
+
+/**
+ * The tab bar: standalone tabs, plus one menu per group.
+ *
+ * A group whose tabs are all hidden for this export disappears with them, and a
+ * group left holding a single tab is flattened to a plain button — a menu with
+ * one item in it is a click for nothing.
+ */
+function buildTabBar() {
+  const bar = $('tabs');
+  const shown = visibleTabs();
+  const nodes = [];
+
+  for (const tab of shown.filter((t) => !t.group)) nodes.push(tabButton(tab, false));
+
+  for (const group of GROUPS) {
+    const members = shown.filter((t) => t.group === group.id);
+    if (!members.length) continue;
+    if (members.length === 1) {
+      nodes.push(tabButton(members[0], false));
+      continue;
+    }
+
+    const menu = h('div', { class: 'tabmenu' },
+      ...members.map((tab) => tabButton(tab, true)));
+
+    const trigger = h('button', {
+      class: 'tab tab-parent',
+      type: 'button',
+      id: `tabgroup-${group.id}`,
+      'aria-expanded': 'false',
+      'aria-haspopup': 'true',
+      onclick: (event) => {
+        const open = trigger.getAttribute('aria-expanded') === 'true';
+        closeMenus(trigger);
+        trigger.setAttribute('aria-expanded', String(!open));
+        event.stopPropagation();
+      },
+    }, group.name);
+
+    nodes.push(h('div', { class: 'tabgroup', 'data-group': group.id }, trigger, menu));
+  }
+
+  bar.replaceChildren(...nodes);
+}
+
 function showDashboard() {
   $('intro').hidden = true;
   $('dashboard').hidden = false;
 
-  const bar = $('tabs');
-  bar.replaceChildren(...TABS.map((tab) =>
-    h('button', {
-      class: 'tab',
-      type: 'button',
-      role: 'tab',
-      id: `tab-${tab.id}`,
-      'aria-selected': String(tab.id === state.active),
-      'aria-controls': 'panel',
-      onclick: () => renderTab(tab.id),
-    }, tab.name)));
-
+  buildTabBar();
   setNavigator(renderTab);
   renderTab(state.active);
   updateReminder();
+
+  // A menu left hanging open over the panel is worse than no menu. Bound once,
+  // on the document, so it still fires for clicks the bar never sees.
+  if (!showDashboard.bound) {
+    showDashboard.bound = true;
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest?.('.tabgroup')) closeMenus();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const open = document.querySelector('#tabs .tab-parent[aria-expanded="true"]');
+      if (!open) return;
+      closeMenus();
+      open.focus();
+    });
+  }
 }
 
 function renderTab(id, anchor) {
   hideTip();
+  const tabs = visibleTabs();
+  const tab = tabs.find((t) => t.id === id) ?? tabs[0];
+  // Fall back to the tab actually shown, so a stale id — a hidden tab, or a
+  // `goTo` aimed at a section this export cannot fill — lands somewhere real
+  // instead of leaving the panel blank.
+  id = tab.id;
   state.active = id;
-  for (const tab of TABS) {
-    document.getElementById(`tab-${tab.id}`)?.setAttribute('aria-selected', String(tab.id === id));
+  for (const other of tabs) {
+    const button = document.getElementById(`tab-${other.id}`);
+    if (!button) continue;
+    if (other.id === id) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
   }
-  const tab = TABS.find((t) => t.id === id) ?? TABS[0];
+
+  // The selected tab may be inside a collapsed menu, where its own highlight is
+  // invisible. Mark the menu that contains it instead, so the bar always shows
+  // where you are — including after a `goTo` from a tile in another section.
+  for (const group of GROUPS) {
+    document.getElementById(`tabgroup-${group.id}`)
+      ?.classList.toggle('is-active', group.id === tab.group);
+  }
+
   const panel = $('panel');
   panel.replaceChildren(tab.render(state.summary, state.results));
   panel.setAttribute('aria-labelledby', `tab-${id}`);
@@ -299,8 +457,9 @@ function exportView(summary, results) {
   frag.append(section(null, null, h('div', { class: 'grid cols-2' },
     card('History file (JSON)',
       'The one to keep. Upload it next time to unlock trends. It holds your username, ' +
-      'follower and following handles with their dates, per-day activity totals and your top creators — ' +
-      'and none of your email, phone, IP addresses, device IDs, GPS coordinates or message text.',
+      'follower and following handles with their dates, per-day activity totals, your top creators and ' +
+      'the people who message you — and none of your email, phone, IP addresses, device IDs, GPS ' +
+      'coordinates or message text.',
       h('div', { class: 'dropzone-actions dropzone-actions--start' },
         h('button', { class: 'btn btn-primary', type: 'button', onclick: saveHistory },
           state.downloaded ? 'Download again' : 'Download history'))),
@@ -330,6 +489,10 @@ function exportView(summary, results) {
       { k: 'Following handles + dates', v: `${fmt(results.audience.insights.following)} entries` },
       { k: 'Published posts', v: `${fmt(results.content.totals.published)} timestamps and types` },
       { k: 'Top creators', v: 'handle and affinity score only' },
+      {
+        k: 'People who message you',
+        v: `${fmt(results.fans.totals.people)} names and message counts — no message text`,
+      },
       { k: 'Daily totals', v: 'views, likes, comments and ads per day' },
       { k: 'Advertisers', v: `${fmt(results.ads.totals.advertisersWithYourData)} company names` },
     ],
@@ -346,6 +509,8 @@ function exportView(summary, results) {
       { k: 'Message text, captions and comment text' },
     ],
   ))));
+
+  frag.append(passportSection(results));
   return frag;
 }
 

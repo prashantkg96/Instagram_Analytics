@@ -1,5 +1,9 @@
 // privacy.js — what a copy of this ZIP would tell an attacker.
 //
+// ⚠️ Every setting value here is a literal string Meta chose, not a normalised
+// enum, and Meta has changed the wording before. Nothing below may assume an
+// unrecognised value means "off" — see MAP_AUDIENCES and `binaryState`.
+//
 // The point of this tab is that the user knows what they are holding before
 // they send it to anyone — a support agent, a developer, a forum thread. Every
 // finding names the file it came from so it can be removed.
@@ -8,7 +12,22 @@
 // the history file. See history.js, where the snapshot is built from an
 // explicit allow-list rather than by deleting keys.
 
+import { binaryState } from './util.js';
+
 const SEVERITY = { critical: 3, high: 2, medium: 1, low: 0 };
+
+/**
+ * Friend Map audience wordings this build recognises, loosest last.
+ *
+ * Deliberately a small allow-list rather than a catch-all: an audience Meta
+ * adds or renames must surface as unknown, with its literal string on screen,
+ * instead of being silently mapped to the nearest label.
+ */
+const MAP_AUDIENCES = [
+  { label: 'No one', test: /only owner|no one|just me|nobody/i },
+  { label: 'Friends', test: /close friends|friends/i },
+  { label: 'Followers', test: /followers/i },
+];
 
 function finding(severity, title, detail, file, present = true) {
   return { severity, title, detail, file, present };
@@ -44,11 +63,22 @@ export function privacy(data) {
     };
   })();
 
+  // Notification rows are not reliably binary. Some carry "on"/"off"; others
+  // carry an audience ("From people I follow"), and nothing in the export
+  // distinguishes the two. The previous count tested /off|false/, so every
+  // audience-style row was tallied as ON — a wrong number presented as fact.
+  //
+  // Now each row is classified strictly: on, off, or unrecognised. The
+  // unrecognised ones are counted separately rather than folded into either
+  // side, so the tile can say what is actually known.
   const prefs = data.profile.notifications ?? [];
+  const classified = prefs.map((n) => ({ ...n, state: binaryState(n.value) }));
   const notifications = {
     total: prefs.length,
-    off: prefs.filter((n) => /off|false/i.test(n.value ?? '')).length,
-    rows: prefs,
+    off: classified.filter((n) => n.state === false).length,
+    on: classified.filter((n) => n.state === true).length,
+    unclassified: classified.filter((n) => n.state === null).length,
+    rows: classified,
   };
 
   if (pay?.email || pay?.name) {
@@ -169,13 +199,38 @@ export function privacy(data) {
     { title: 'No two-factor backup codes', detail: 'Not included in data exports.' },
   ];
 
+  // Each row carries its own `options` so the view can render a switch without
+  // knowing what the setting is. `state` is the resolved value: true, false, or
+  // null when the export did not say. `good` is null in that case too — an
+  // unknown setting is neither reassuring nor alarming, and colouring it either
+  // way would be a claim the data does not support.
+  const privateState = binaryState(data.profile.isPrivate);
+  const syncState = binaryState(data.profile.contactSyncing);
+  const mapAudience = data.profile.friendMapAudience;
+
   const settings = [
-    { label: 'Account is private', value: data.profile.isPrivate, good: data.profile.isPrivate },
-    { label: 'Contact syncing enabled', value: data.profile.contactSyncing, good: !data.profile.contactSyncing },
     {
+      label: 'Account is private',
+      options: ['On', 'Off'],
+      state: privateState === null ? null : (privateState ? 'On' : 'Off'),
+      good: privateState === null ? null : privateState,
+    },
+    {
+      label: 'Contact syncing enabled',
+      options: ['On', 'Off'],
+      state: syncState === null ? null : (syncState ? 'On' : 'Off'),
+      good: syncState === null ? null : !syncState,
+    },
+    {
+      // Not binary: Meta writes a free-text audience label here and has changed
+      // the wording before. The known set is listed so the switch has segments
+      // to draw; anything outside it falls through to the unknown state with
+      // the literal string shown, rather than being forced into a wrong bucket.
       label: 'Friend Map sharing',
-      value: data.profile.friendMapAudience ?? 'unknown',
-      good: /only owner|no one/i.test(data.profile.friendMapAudience ?? ''),
+      options: ['No one', 'Friends', 'Followers'],
+      state: MAP_AUDIENCES.find((a) => a.test.test(mapAudience ?? ''))?.label ?? null,
+      raw: mapAudience ?? null,
+      good: /only owner|no one/i.test(mapAudience ?? '') ? true : (mapAudience ? false : null),
     },
   ];
 

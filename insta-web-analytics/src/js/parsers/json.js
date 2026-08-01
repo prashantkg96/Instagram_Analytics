@@ -12,6 +12,7 @@
 
 import { hashtagsInText, mentionsInText } from './common.js';
 import { deviceOf } from './security.js';
+import { summariseThread } from './messages.js';
 
 /**
  * Undo Meta's double-encoding. Strings in the JSON export are UTF-8 bytes that
@@ -228,36 +229,26 @@ export function parseJsonExport(files) {
   }));
 
   // ── messages ──
+  //
+  // Reduced by the same `summariseThread` the HTML path uses. It previously had
+  // its own copy, which left `opened`, `openedByMe`, `medianReplySeconds` and
+  // `hours` permanently empty on JSON exports — the fields existed but were
+  // stubs, so anything reading them silently got zeros for half of all users.
   const threads = readAll(files, /messages\/.*\/message_\d+\.json$/i).map(({ name, data }) => {
-    const msgs = (data.messages ?? [])
-      .map((m) => ({
-        from: S(m.sender_name),
-        isMe: S(m.sender_name) === profile.name,
-        at: m.timestamp_ms ? new Date(m.timestamp_ms).toISOString() : null,
-        length: (S(m.content) ?? '').length,
-        emoji: ((S(m.content) ?? '').match(/\p{Extended_Pictographic}/gu) ?? []).length,
-        hasLink: /https?:\/\//.test(S(m.content) ?? ''),
-        isShare: Boolean(m.share),
-      }))
-      .filter((m) => m.at)
-      .sort((a, b) => a.at.localeCompare(b.at));
-    const sent = msgs.filter((m) => m.isMe).length;
-    return {
+    const msgs = (data.messages ?? []).map((m) => ({
+      from: S(m.sender_name),
+      isMe: S(m.sender_name) === profile.name,
+      at: m.timestamp_ms ? new Date(m.timestamp_ms).toISOString() : null,
+      length: (S(m.content) ?? '').length,
+      emoji: ((S(m.content) ?? '').match(/\p{Extended_Pictographic}/gu) ?? []).length,
+      hasLink: /https?:\/\//.test(S(m.content) ?? ''),
+      isShare: Boolean(m.share),
+    }));
+    return summariseThread(msgs, {
       slug: name.split('/').at(-2),
       folder: name.includes('message_requests') ? 'message_requests' : 'inbox',
-      title: S(data.title) ?? msgs.find((m) => !m.isMe)?.from ?? null,
-      total: msgs.length,
-      sent,
-      received: msgs.length - sent,
-      first: msgs[0]?.at ?? null,
-      last: msgs.at(-1)?.at ?? null,
-      opened: 0,
-      openedByMe: 0,
-      medianReplySeconds: null,
-      emoji: msgs.reduce((s, m) => s + m.emoji, 0),
-      shares: msgs.filter((m) => m.isShare).length,
-      hours: {},
-    };
+      title: S(data.title) ?? null,
+    });
   });
 
   const ips = new Set(logins.map((l) => l.ip).filter(Boolean));
@@ -336,7 +327,10 @@ export function parseJsonExport(files) {
       hiddenAds: 0,
       offMeta: [],
     },
-    messages: { threads: threads.sort((a, b) => b.total - a.total) },
+    messages: {
+      threads: threads.sort((a, b) => b.total - a.total),
+      selfIdentified: Boolean(profile.name),
+    },
     security: {
       logins,
       logouts: [],

@@ -502,6 +502,78 @@ export function sparkline(values, { width = 104, height = 26 } = {}) {
   return svg;
 }
 
+/**
+ * A single value on a fixed scale, drawn as an open arc.
+ *
+ * The one chart here with no axis, because there is no series to compare
+ * against — it shows where one number sits between two bounds. Same marks as
+ * everything else: a 2px round-capped stroke in the series hue over a track one
+ * step off the surface, never dashed.
+ *
+ * The endpoints are labelled on purpose. An arc without them is a dial the
+ * reader has to guess the range of, and a score whose scale is invisible is
+ * indistinguishable from a made-up number.
+ *
+ * @param {number} value
+ * @param {{min?: number, max?: number, label?: string, height?: number}} opts
+ */
+export function arcGauge(value, { min = 0, max = 100, label = '', height = 168 } = {}) {
+  return responsive((width) => drawGauge(value, { min, max, label, height, width }), { min: 220 });
+}
+
+function drawGauge(value, { min, max, label, height, width }) {
+  const svg = svgRoot(width, height);
+  const cx = width / 2;
+  const r = Math.min(width / 2 - 34, height - 52);
+  const cy = height - 26;
+  const stroke = 10;
+
+  // Semicircle, left to right.
+  const point = (fraction) => {
+    const angle = Math.PI * (1 - Math.min(1, Math.max(0, fraction)));
+    return [cx + r * Math.cos(angle), cy - r * Math.sin(angle)];
+  };
+  // The large-arc flag asks whether the sweep exceeds 180° of the FULL circle.
+  // This gauge spans at most a semicircle, so it is always 0. Deriving it from
+  // the fraction instead — `to - from > 0.5` — sets it for anything past the
+  // halfway mark, and SVG then draws the long way round: the fill balloons out
+  // above the track at a visibly larger radius.
+  const arc = (from, to) => {
+    const [x1, y1] = point(from);
+    const [x2, y2] = point(to);
+    return `M${x1},${y1} A${r},${r} 0 0 1 ${x2},${y2}`;
+  };
+
+  const span = max - min || 1;
+  const fraction = Math.min(1, Math.max(0, (value - min) / span));
+
+  el('path', {
+    d: arc(0, 1), fill: 'none', stroke: 'var(--gridline)',
+    'stroke-width': stroke, 'stroke-linecap': 'round',
+  }, svg);
+  if (fraction > 0) {
+    el('path', {
+      d: arc(0, fraction), fill: 'none', stroke: seriesColor(0),
+      'stroke-width': stroke, 'stroke-linecap': 'round',
+    }, svg);
+  }
+
+  const value_ = el('text', {
+    x: cx, y: cy - 6, 'text-anchor': 'middle', class: 'gauge-value',
+  }, svg);
+  value_.textContent = fmt(Math.round(value));
+
+  if (label) {
+    const caption = el('text', { x: cx, y: cy + 14, 'text-anchor': 'middle' }, svg);
+    caption.textContent = label;
+  }
+  el('text', { x: cx - r, y: cy + 18, 'text-anchor': 'middle' }, svg).textContent = fmt(min);
+  el('text', { x: cx + r, y: cy + 18, 'text-anchor': 'middle' }, svg).textContent = fmt(max);
+
+  svg.setAttribute('aria-label', `${label || 'Score'}: ${Math.round(value)} out of ${max}`);
+  return svg;
+}
+
 /** Legend markup — always rendered for two or more series. */
 export function legend(items) {
   const node = document.createElement('div');

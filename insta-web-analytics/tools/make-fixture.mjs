@@ -133,9 +133,15 @@ const interactionRecord = (u, i, tags) => rec(`<div class="_3-95 _a6-p">${rec(
   ])}</div>`,
 )}<div>${stamp(dayOffset(i))}</div></div>`);
 
+// The last few are owned by a follower rather than a creator, on purpose: the
+// Owner block is where a display name and a handle appear together, which is
+// what lets the DM ranking resolve "Second Soul display" to @second_soul. A
+// fixture with no overlap between people you like and people who message you
+// would leave that join permanently untested.
 files.set('your_instagram_activity/likes/liked_posts.html', page('Liked posts',
   Array.from({ length: 40 }, (_, i) =>
-    interactionRecord(pick(CREATORS), i, [pick(['viral', 'fyp', 'reels', 'comedy'])])).join('')));
+    interactionRecord(i >= 36 ? 'second_soul' : pick(CREATORS), i,
+      [pick(['viral', 'fyp', 'reels', 'comedy'])])).join('')));
 
 // Outgoing story interactions, filed apart from likes by Instagram.
 for (const [name, count] of [['polls', 6], ['quizzes', 3], ['emoji_sliders', 2], ['countdowns', 1]]) {
@@ -172,11 +178,74 @@ files.set('ads_information/instagram_ads_and_businesses/advertisers_using_your_a
       '</div></td></tr>',
     ])}</div>`)));
 
-files.set('your_instagram_activity/messages/inbox/testfriend_1/message_1.html', page('Test Friend',
+// A one-to-one thread whose counterparty display name matches the Owner block
+// above, so the name-to-handle join resolves. Every third message is the user's
+// own, and two inbound ones are attachments, which is how a shared reel reads.
+files.set('your_instagram_activity/messages/inbox/second_soul_1/message_1.html', page('second_soul display',
   Array.from({ length: 20 }, (_, i) => rec(
-    `<h2 class="_3-95 _2pim _a6-h _a6-i">${i % 3 === 0 ? 'Test User' : 'Test Friend'}</h2>` +
-    `<div class="_a6-p"><div>Fixture message ${i}</div><div>${stamp(dayOffset(i * 2))}</div></div>`,
+    `<h2 class="_3-95 _2pim _a6-h _a6-i">${i % 3 === 0 ? 'Test User' : 'second_soul display'}</h2>` +
+    `<div class="_a6-p"><div>${i === 4 || i === 7 ? 'sent an attachment' : `Fixture message ${i}`}</div>` +
+    `<div>${stamp(dayOffset(i * 2))}</div></div>`,
   )).join('')));
+
+// Someone who appears nowhere else in the export. Their name cannot resolve to
+// a handle, which is the common case in a real export and has to render as
+// plain text rather than a broken profile link.
+files.set('your_instagram_activity/messages/inbox/unknown_pal_1/message_1.html', page('Unknown Pal',
+  Array.from({ length: 8 }, (_, i) => rec(
+    `<h2 class="_3-95 _2pim _a6-h _a6-i">${i % 4 === 0 ? 'Test User' : 'Unknown Pal'}</h2>` +
+    `<div class="_a6-p"><div>Fixture message ${i}</div><div>${stamp(dayOffset(i * 5))}</div></div>`,
+  )).join('')));
+
+// A group thread. Three distinct senders, so it must be excluded from any
+// per-person ranking — the thread title names only whoever spoke first.
+files.set('your_instagram_activity/messages/inbox/fixture_group_1/message_1.html', page('Fixture group',
+  Array.from({ length: 9 }, (_, i) => rec(
+    `<h2 class="_3-95 _2pim _a6-h _a6-i">${['third_wheel display', 'Test User', 'fourth_wall display'][i % 3]}</h2>` +
+    `<div class="_a6-p"><div>Group message ${i}</div><div>${stamp(dayOffset(i * 3))}</div></div>`,
+  )).join('')));
+
+// Creator stats. Professional accounts only, so `--personal` leaves them out
+// and the Reach tab has to disappear rather than render empty.
+//
+// The exact path and file name Meta uses here are NOT verified against a real
+// professional export — the parser matches on field labels for that reason.
+// These labels are the ones Instagram shows in the app.
+if (!process.argv.includes('--personal')) {
+  files.set('logged_information/past_instagram_insights/past_instagram_insights.html',
+    page('Past Instagram insights', wrap(tbl([
+      cell('Start', stamp(new Date(2026, 1, 11))),
+      cell('End', stamp(new Date(2026, 4, 11))),
+      cell('Accounts reached', '741'),
+      cell('Impressions', '9,552'),
+      cell('Profile visits', '959'),
+      cell('Total interactions', '71'),
+      cell('Accounts engaged', '77'),
+      cell('Post likes', '10'),
+      cell('Post interactions', '14'),
+      cell('Story interactions', '57'),
+      cell('Story replies', '55'),
+      // A label the parser has no name for — it must survive into `extra`
+      // rather than being dropped.
+      cell('Fixture unmapped metric', '1234'),
+    ]))));
+
+  files.set('logged_information/past_instagram_insights/audience_cities.html',
+    page('Audience cities', wrap(tbl([
+      cell('Miami', '12%'), cell('New York', '6.2%'), cell('Orlando', '3.2%'),
+    ]))));
+
+  files.set('logged_information/past_instagram_insights/audience_countries.html',
+    page('Audience countries', wrap(tbl([
+      cell('India', '61.4%'), cell('United States', '18.2%'), cell('Brazil', '4.9%'),
+    ]))));
+
+  files.set('logged_information/past_instagram_insights/audience_insights.html',
+    page('Audience insights', wrap(tbl([
+      cell('male', '52.7%'), cell('female', '47.2%'),
+      cell('18-24', '2.9%'), cell('25-34', '83.4%'), cell('35-44', '9.1%'), cell('45-54', '1.3%'),
+    ]))));
+}
 
 files.set('security_and_login_information/login_and_profile_creation/login_activity.html', page('Login activity',
   Array.from({ length: 6 }, (_, i) => rec(

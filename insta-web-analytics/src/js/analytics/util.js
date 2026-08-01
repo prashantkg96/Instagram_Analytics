@@ -1,4 +1,32 @@
 // util.js — small shared helpers for the analytics modules.
+//
+// Pure computation, no DOM: everything here runs inside the Web Worker.
+
+/**
+ * The values Instagram writes for an on/off setting, and what each means.
+ *
+ * Strict, whole-string matching on purpose. Anything outside this table is
+ * UNKNOWN rather than assumed off — Meta renames these strings without notice,
+ * and the previous loose `/off|false/` test meant an audience-style value such
+ * as "From people I follow" was silently counted as ON.
+ */
+const BINARY_VALUES = new Map([
+  ['on', true], ['true', true], ['yes', true], ['enabled', true],
+  ['off', false], ['false', false], ['no', false], ['disabled', false],
+]);
+
+/**
+ * Classify a raw export value.
+ *
+ * Lives here rather than in ui.js because the analytics layer counts with it
+ * and the view renders with it; the two disagreeing is the bug this replaces.
+ * @returns {true|false|null} null when absent or unrecognised
+ */
+export function binaryState(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === null || value === undefined) return null;
+  return BINARY_VALUES.get(String(value).trim().toLowerCase()) ?? null;
+}
 
 export function countBy(items, keyOf) {
   const map = new Map();

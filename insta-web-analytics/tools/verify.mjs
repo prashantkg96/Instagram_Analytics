@@ -71,6 +71,114 @@ ok('messages sent <= total', results.messages.totals.sent <= results.messages.to
 ok('privacy audit produced findings', results.privacy.findings.length > 0,
   `${results.privacy.findings.length} findings`);
 
+// ── inbound engagement (fan followers) ─────────────────────────────────────
+hr('fan followers — inbound only');
+const fn = results.fans;
+ok('the ranking is usable', fn.reliable,
+  fn.reliable ? '' : 'no display name for the account holder');
+ok('group threads are excluded from the ranking',
+  fn.fans.every((r) => data.messages.threads.find((t) => t.title === r.name)?.isGroup !== true),
+  `${fn.totals.groupThreads} group thread(s) set aside`);
+ok('every fan actually sent something', fn.fans.every((r) => r.received > 0));
+ok('fan scores descend', fn.fans.every((r, i) => i === 0 || fn.fans[i - 1].score >= r.score));
+// The whole point of the module: nothing the user did may reach this score.
+ok('score is inbound only',
+  fn.fans.every((r) => r.score <= (r.received * fn.weights.message
+    + r.shares * fn.weights.share + r.openedByThem * fn.weights.opened) * 1.61),
+  `weights ${JSON.stringify(fn.weights)}`);
+ok('display names resolve to handles where the export allows',
+  fn.totals.resolved > 0, `${fn.totals.resolved}/${fn.totals.people} (${fn.totals.resolvedPct}%)`);
+ok('an unresolvable name is left unlinked rather than guessed',
+  fn.fans.some((r) => r.u === null), 'at least one name has no handle');
+ok('two-way list is a subset of fans who follow you',
+  fn.closest.every((r) => r.followsYou && r.u), `${fn.closest.length} account(s)`);
+ok('combined score is their side plus yours',
+  fn.closest.every((r) => Math.abs(r.combined - (r.score + r.yourScore)) < 0.11));
+
+// ── narrative, score, ad pressure, passport ────────────────────────────────
+hr('at a glance');
+const sum = results.summary;
+ok('the export is described in sentences', sum.sentences.length >= 3,
+  `${sum.sentences.length} sentence(s)`);
+ok('no sentence has an empty slot in it',
+  sum.sentences.every((line) => !/undefined|null|NaN/.test(line)));
+ok('the score sits inside its own scale',
+  sum.score >= sum.min && sum.score <= sum.max, `${sum.score} of ${sum.min}-${sum.max}`);
+ok('every score input is shown with its weight',
+  sum.breakdown.every((b) => b.detail && b.share > 0), `${sum.breakdown.length} inputs`);
+// Weights are renormalised over whatever survived, so they must still total 100
+// — otherwise a missing section silently drags the score down.
+ok('weights are renormalised over the inputs that exist',
+  Math.abs(sum.breakdown.reduce((s, b) => s + b.share, 0) - 100) < 0.5,
+  `${sum.breakdown.reduce((s, b) => s + b.share, 0)}%`);
+ok('the score is the sum of the contributions',
+  Math.abs(sum.score - (sum.min + (sum.breakdown.reduce((s, b) => s + b.contributes, 0) / 100)
+    * (sum.max - sum.min))) < 1);
+
+const pressure = results.ads.pressure;
+ok('ad share and "one in every N" agree',
+  pressure.oneInEvery === null
+    || Math.abs((100 / results.ads.adShare) - pressure.oneInEvery) < 0.6,
+  `${results.ads.adShare}% ≈ 1 in ${pressure.oneInEvery}`);
+ok('daypart shares never exceed 100%',
+  pressure.byDaypart.every((b) => b.count >= 0 && b.count <= 100));
+ok('each daypart counts its ads within its total',
+  pressure.byDaypart.every((b) => b.ads <= b.seen));
+
+// The passport needs the ZIP central directory, which a directory load has no
+// equivalent of — so synthesise one here purely to exercise the module.
+const manifest = [...files].map(([name, text]) => ({ name, uncompressedSize: text.length }));
+const withPassport = analyse(data, null, { manifest, files }).passport;
+ok('the archive manifest is summarised', withPassport !== null,
+  `${withPassport?.totals.entries} entries over ${withPassport?.totals.folders} folders`);
+ok('folder file counts add up to the archive',
+  withPassport.folders.reduce((s, f) => s + f.count, 0) === withPassport.totals.entries);
+ok('absent files are named, not just counted',
+  withPassport.missing.every((m) => m.file && m.needed),
+  `${withPassport.totals.missing} missing`);
+ok('the passport is omitted when there is no archive listing',
+  analyse(data, null).passport === null);
+
+// ── creator stats (professional accounts) ──────────────────────────────────
+hr('reach & insights');
+const ins = results.insights;
+if (!ins) {
+  ok('no creator stats, and none claimed', data.insights === null,
+    'personal-account export — the Reach tab is dropped');
+} else {
+  ok('creator stats recognised', ins.recognised, `from ${ins.sources.length} file(s)`);
+  ok('the reporting period is dated', Boolean(ins.period.start && ins.period.end),
+    `${ins.period.start} → ${ins.period.end}`);
+  ok('engagement rate is a real share', ins.ratios.engagementRate === null
+    || (ins.ratios.engagementRate >= 0 && ins.ratios.engagementRate <= 100),
+    `${ins.ratios.engagementRate}%`);
+  // The bug this catches: expressing reach-vs-followers or visits-per-reach as
+  // a percentage produces "14820%", which reads as broken rather than as
+  // "you reach 148x your follower count".
+  ok('open-ended ratios are multiples, not percentages',
+    [ins.ratios.frequency, ins.ratios.reachVsFollowers, ins.ratios.visitsPerReach]
+      .every((v) => v === null || v >= 0),
+    `frequency ${ins.ratios.frequency}x, reach/followers ${ins.ratios.reachVsFollowers}x`);
+  ok('a metric with no source is null, never zero',
+    Object.values(ins.metrics).every((v) => v === null || typeof v === 'number'));
+  ok('unmapped labels are kept rather than dropped', ins.extra.length > 0,
+    `${ins.extra.length} unclassified value(s)`);
+  ok('follower demographics parsed',
+    ins.demographics.age.length > 0 && ins.demographics.cities.length > 0,
+    `${ins.demographics.age.length} age bands, ${ins.demographics.cities.length} cities`);
+  ok('demographic shares are percentages',
+    [...ins.demographics.age, ...ins.demographics.gender]
+      .every((row) => row.count >= 0 && row.count <= 100));
+
+  // A personal account must lose the whole section, not render it empty.
+  const withoutInsights = new Map(
+    [...files].filter(([name]) => !/insight/i.test(name)),
+  );
+  ok('a personal-account export produces no insights at all',
+    analyse(parseExport(withoutInsights), null).insights === null,
+    `${files.size - withoutInsights.size} insight file(s) removed`);
+}
+
 // ── history round-trip ─────────────────────────────────────────────────────
 hr('history round-trip');
 const snapshot = buildSnapshot(data, results);

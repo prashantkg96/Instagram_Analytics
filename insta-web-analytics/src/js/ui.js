@@ -114,6 +114,48 @@ export function chip(icon, label, { tone } = {}) {
 }
 
 /**
+ * A setting's state, drawn as a disabled segmented switch.
+ *
+ * Reports state; it never sets it. Nothing here is interactive — this is an
+ * export being read, not a settings panel — so it is a `role="img"` with one
+ * accessible label rather than a checkbox that lies about being operable.
+ *
+ * Both labels are always rendered as text. Colour alone is not the carrier:
+ * this project already holds that line for charts (every one ships a table
+ * view), and the print stylesheet drops chrome, so a switch that meant
+ * something only through its fill would lose it in greyscale.
+ *
+ * A segmented control rather than a two-position knob because the same
+ * primitive has to cover settings with more than two values — Friend Map
+ * audience, for one — and any value Meta adds later.
+ *
+ * @param {string[]} options  every possible label, in display order
+ * @param {string|null} active  the current one, or null for unknown
+ * @param {{label?: string, tone?: 'good'|'bad', raw?: string}} opts
+ *   `raw` shows the literal export value beside the control when it could not
+ *   be matched, so an unrecognised setting reads as "we saw this and don't know
+ *   what it means" rather than a confident wrong answer.
+ */
+export function stateSwitch(options, active, { label, tone, raw } = {}) {
+  const unknown = active === null || active === undefined;
+  const described = `${label ? `${label}: ` : ''}${unknown ? `unknown${raw ? ` (${raw})` : ''}` : active}`;
+
+  const node = h('span', {
+    class: `switch${unknown ? ' is-unknown' : ''}${tone && !unknown ? ` is-${tone}` : ''}`,
+    role: 'img',
+    'aria-label': described,
+    title: unknown && raw ? `Your export says "${raw}", which this build does not recognise` : null,
+  }, ...options.map((option) => h('span', {
+    class: `switch-opt${option === active ? ' is-active' : ''}`,
+  }, option)));
+
+  if (!unknown || !raw) return node;
+  // Keep the unmatched string visible rather than swallowing it — same
+  // principle as the Reach tab listing labels it could not classify.
+  return h('span', { class: 'switch-wrap' }, node, h('span', { class: 'switch-raw' }, raw));
+}
+
+/**
  * Sortable, filterable table.
  *
  * @param {{key:string,label:string,num?:boolean,render?:Function}[]} columns

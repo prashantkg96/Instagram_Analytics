@@ -25,6 +25,44 @@ export function ads(data) {
 
   const events = offMeta.flatMap((app) => app.events.map((e) => ({ ...e, app: app.app })));
 
+  // ── ad pressure ──────────────────────────────────────────────────────────
+  // Ad share as a percentage is easy to skim past. "One ad in every six things
+  // you saw" is the same figure in a form that lands, so it is computed rather
+  // than left for the reader to invert.
+  const shown = adsInWindow + organicInWindow;
+  const oneInEvery = adsInWindow ? round(shown / adsInWindow, 1) : null;
+
+  // Brands in the ad log itself — distinct from `advertisers`, which is Meta's
+  // list of companies holding your data. The two differ a lot: most brands that
+  // actually served you an ad never appear on that list.
+  const brandCounts = countBy(adsViewed, (a) => a.u);
+  const onYourList = new Set(advertisers.map((a) => String(a).toLowerCase()));
+  const brandsNotOnList = [...brandCounts.keys()]
+    .filter((u) => !onYourList.has(String(u).toLowerCase())).length;
+
+  // Ad density by time of day. The interesting number is not when you see the
+  // most ads — that just tracks when you scroll — but when the largest SHARE of
+  // what you see is paid.
+  const BANDS = [
+    { key: 'Morning', from: 6, to: 12 },
+    { key: 'Afternoon', from: 12, to: 18 },
+    { key: 'Evening', from: 18, to: 24 },
+    { key: 'Late night', from: 0, to: 6 },
+  ];
+  const hourOfRow = (x) => (x.at ? new Date(x.at).getHours() : null);
+  const organicRows = [...inWindow(postsViewed), ...inWindow(videosWatched), ...inWindow(storiesViewed)];
+  const adRows = inWindow(adsViewed);
+  const byDaypart = BANDS.map((band) => {
+    const inBand = (rows) => rows.filter((x) => {
+      const hour = hourOfRow(x);
+      return hour !== null && hour >= band.from && hour < band.to;
+    }).length;
+    const paid = inBand(adRows);
+    const organic = inBand(organicRows);
+    return { key: band.key, count: percent(paid, paid + organic), ads: paid, seen: paid + organic };
+  });
+  const densest = [...byDaypart].sort((a, b) => b.count - a.count)[0] ?? null;
+
   return {
     totals: {
       adsViewed: adsViewed.length,
@@ -42,8 +80,21 @@ export function ads(data) {
     adShareWindow: window,
     adShareSample: { ads: adsInWindow, organic: organicInWindow },
     perDay: activeDays ? round(adsViewed.length / activeDays, 1) : 0,
+
+    pressure: {
+      // "1 in N things you saw was an ad." Null when the shared window holds
+      // no ads at all, rather than a misleading Infinity.
+      oneInEvery,
+      brands: brandCounts.size,
+      brandsNotOnList,
+      // The single most repeated brand — concentration, not variety.
+      topBrand: ranked(brandCounts, 1)[0] ?? null,
+      byDaypart,
+      densest,
+    },
+
     daily,
-    topAdvertiserAccounts: ranked(countBy(adsViewed, (a) => a.u), 25),
+    topAdvertiserAccounts: ranked(brandCounts, 25),
     advertisers,
     topics,
     offMeta: offMeta

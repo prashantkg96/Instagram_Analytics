@@ -28,6 +28,24 @@ function topCreators(affinityResult, limit = 200) {
 }
 
 /**
+ * The inbound ranking, so fan retention can be tracked between exports.
+ *
+ * Handle, name and counts only. A person whose display name never matched a
+ * follower handle is written with `u: null` — the name is the only identifier
+ * there is for them, and it is already in the DM data this file is derived
+ * from. No message text, no timestamps beyond the month count.
+ */
+function topFans(fansResult, limit = 200) {
+  return fansResult.fans.slice(0, limit).map((r) => ({
+    u: r.u,
+    name: r.name,
+    score: r.score,
+    n: r.received,
+    m: r.months,
+  }));
+}
+
+/**
  * Daily activity, aggregated. The raw impression rows (several thousand of
  * them, each with a caption) are never carried forward — only these buckets —
  * which is what keeps the file in the tens of KB no matter how many snapshots
@@ -77,6 +95,8 @@ export function buildSnapshot(data, results) {
       messages: results.messages.totals.messages,
       messagesSent: results.messages.totals.sent,
       syncedContacts: data.syncedContactCount,
+      fans: results.fans.totals.people,
+      consistentFans: results.fans.totals.consistent,
     },
 
     ratios: {
@@ -103,6 +123,7 @@ export function buildSnapshot(data, results) {
 
     posts: data.content.published.map((m) => ({ at: m.at, type: m.type, n: m.mediaCount })),
     creators: topCreators(results.affinity),
+    fans: topFans(results.fans),
     daily: dailyBuckets(data),
     advertisers: data.ads.advertisers.slice(0, 5000),
     offMetaApps: data.ads.offMeta.map((a) => a.app),
