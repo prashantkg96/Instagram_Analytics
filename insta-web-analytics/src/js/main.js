@@ -1,6 +1,6 @@
 // main.js — wiring: file intake, worker orchestration, tab rendering.
 
-import { h, fmt, download, card, section, notice, table, tile } from './ui.js';
+import { h, fmt, download, card, section, notice, table, tile, escapeHtml } from './ui.js';
 import { hideTip } from './charts.js';
 import { serializeHistory, historyToCsv, historyFilename } from './history.js';
 import { setNavigator } from './nav.js';
@@ -219,7 +219,7 @@ function run() {
       $('progress').hidden = true;
       const box = $('intake-error');
       box.hidden = false;
-      box.replaceChildren(notice(`<strong>Could not read that export.</strong> ${message.message}`, 'danger'));
+      box.replaceChildren(notice(`<strong>Could not read that export.</strong> ${escapeHtml(message.message)}`, 'danger'));
       return;
     }
     worker.terminate();
@@ -249,7 +249,7 @@ function run() {
     const box = $('intake-error');
     box.hidden = false;
     box.replaceChildren(notice(
-      `<strong>The analyser crashed.</strong> ${event.message ?? 'Unknown error'}`, 'danger',
+      `<strong>The analyser crashed.</strong> ${escapeHtml(event.message ?? 'Unknown error')}`, 'danger',
     ));
   };
 

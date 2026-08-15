@@ -287,6 +287,21 @@ export function section(title, subtitle, ...content) {
     ...content);
 }
 
+/**
+ * Escape text destined for a `html:`/notice() string. Lives here, next to the
+ * innerHTML sink it protects, so callers don't have to go looking for it.
+ */
+export function escapeHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+/**
+ * `text` is inserted as MARKUP (see h()'s `html:` key), which is what lets
+ * callers pass `<strong>`. Anything interpolated into it that did not come from
+ * this codebase must go through escapeHtml() first.
+ */
 export function notice(text, kind = '') {
   return h('div', { class: `notice ${kind}`.trim(), html: text });
 }

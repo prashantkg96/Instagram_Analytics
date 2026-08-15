@@ -15,6 +15,21 @@ const NS = 'http://www.w3.org/2000/svg';
 const SERIES_VARS = ['--series-1', '--series-2', '--series-3'];
 const GAP = 2;
 
+// Tooltips are built as HTML strings and assigned with innerHTML (see showTip),
+// and the values interpolated into them come from the user's Instagram export —
+// which means OTHER PEOPLE wrote them. Group-chat titles, display names,
+// advertiser names and hashtags are all attacker-choosable: anyone who can add
+// you to a group chat picks part of that string. Without escaping, that markup
+// parsed and entered the document.
+//
+// On the hosted site a strict CSP contained it to content injection rather than
+// script execution, but the standalone and single-file file:// builds ship
+// without those headers, so there it is a straightforward XSS. Escape at the
+// point of interpolation; `fmt()` output is numeric and safe.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
 export const seriesColor = (i) => `var(${SERIES_VARS[i % SERIES_VARS.length]})`;
 
 function el(name, attrs = {}, parent) {
@@ -210,7 +225,7 @@ function drawColumns(data, { height = 190, label = 'value', highlight = null, wi
       width: band, height: height - pad.bottom - pad.top,
       fill: 'transparent',
     }, svg);
-    hoverable(hit, `<b>${d.key}</b><br>${fmt(d.count)} ${label}`);
+    hoverable(hit, `<b>${esc(d.key)}</b><br>${fmt(d.count)} ${label}`);
   });
 
   el('line', {
@@ -266,12 +281,12 @@ function drawStacked(rows, keys, { height = 210, xKey = 'month', width = 720 } =
       cursor -= segH + GAP;
     });
 
-    const detail = keys.map((k) => `${k.name}: ${fmt(row[k.key] ?? 0)}`).join('<br>');
+    const detail = keys.map((k) => `${esc(k.name)}: ${fmt(row[k.key] ?? 0)}`).join('<br>');
     const hit = el('rect', {
       x: pad.left + i * band, y: pad.top, width: band,
       height: height - pad.bottom - pad.top, fill: 'transparent',
     }, svg);
-    hoverable(hit, `<b>${row[xKey]}</b><br>${detail}<br><b>${fmt(totals[i])} total</b>`);
+    hoverable(hit, `<b>${esc(row[xKey])}</b><br>${detail}<br><b>${fmt(totals[i])} total</b>`);
   });
 
   el('line', {
@@ -347,7 +362,7 @@ function drawLine(points, { height = 210, label = '', areaFill = true, width = 7
       x: x(i) - step / 2, y: pad.top, width: Math.max(step, 12),
       height: height - pad.bottom - pad.top, fill: 'transparent',
     }, svg);
-    hoverable(hit, `<b>${p.key}</b><br>${fmt(p.value)}${label ? ` ${label}` : ''}`);
+    hoverable(hit, `<b>${esc(p.key)}</b><br>${fmt(p.value)}${label ? ` ${label}` : ''}`);
   });
   return svg;
 }
@@ -419,7 +434,7 @@ function drawBars(data, { limit = 12, label = '', height = null, width = 720 } =
     const hit = el('rect', {
       x: 0, y, width, height: Math.max(rowHeight, 24), fill: 'transparent',
     }, svg);
-    hoverable(hit, `<b>${row.key}</b><br>${fmt(row.count)}${label ? ` ${label}` : ''}`);
+    hoverable(hit, `<b>${esc(row.key)}</b><br>${fmt(row.count)}${label ? ` ${label}` : ''}`);
   });
 
   el('line', {
