@@ -1,18 +1,8 @@
 {
   ".claude/settings.local.json": {
-    "mtime": 1785569895.8908913,
-    "ast_hash": "a03384c2b4e8ca2aace6e0038fcf5e2d",
-    "semantic_hash": "a03384c2b4e8ca2aace6e0038fcf5e2d"
-  },
-  "analytics.py": {
-    "mtime": 1780775328.224946,
-    "ast_hash": "7dbdd19ba37f893d6ac59e8cc5934f79",
-    "semantic_hash": "7dbdd19ba37f893d6ac59e8cc5934f79"
-  },
-  "db.py": {
-    "mtime": 1780775328.2259493,
-    "ast_hash": "38acb084d09ea5d308a02290395fcd86",
-    "semantic_hash": "38acb084d09ea5d308a02290395fcd86"
+    "mtime": 1785626547.2780747,
+    "ast_hash": "5abd968cce2b5e8a2242d190d9e8406e",
+    "semantic_hash": "5abd968cce2b5e8a2242d190d9e8406e"
   },
   "insta-web-analytics/build.mjs": {
     "mtime": 1785510113.1932595,
@@ -20,9 +10,9 @@
     "semantic_hash": "0db064352b7c4dc4f38a41285264e9f0"
   },
   "insta-web-analytics/src/js/analytics/ads.js": {
-    "mtime": 1785571797.9277592,
-    "ast_hash": "2d7f5e88ec8a5c429391d1f6eb4875af",
-    "semantic_hash": "2d7f5e88ec8a5c429391d1f6eb4875af"
+    "mtime": 1785578824.271113,
+    "ast_hash": "1c0faf4caa5774f1170a0bad587e0dc4",
+    "semantic_hash": "1c0faf4caa5774f1170a0bad587e0dc4"
   },
   "insta-web-analytics/src/js/analytics/affinity.js": {
     "mtime": 1785535489.6488392,
@@ -50,19 +40,19 @@
     "semantic_hash": "c9c07efc8f05b5c3692dcbda812c86e5"
   },
   "insta-web-analytics/src/js/analytics/fans.js": {
-    "mtime": 1785571144.2688887,
-    "ast_hash": "21a0f8ac0d3c371f3b453a778959f657",
-    "semantic_hash": "21a0f8ac0d3c371f3b453a778959f657"
+    "mtime": 1785578824.271113,
+    "ast_hash": "f4161f02003f597b809715a03b1f603f",
+    "semantic_hash": "f4161f02003f597b809715a03b1f603f"
   },
   "insta-web-analytics/src/js/analytics/index.js": {
-    "mtime": 1785571955.0530858,
+    "mtime": 1785578824.27211,
     "ast_hash": "d5d5cac5ea1a0c60e3888cca049ca7aa",
     "semantic_hash": "d5d5cac5ea1a0c60e3888cca049ca7aa"
   },
   "insta-web-analytics/src/js/analytics/insights.js": {
-    "mtime": 1785571632.8208296,
-    "ast_hash": "6a1cf4689292fe554691db9191614377",
-    "semantic_hash": "6a1cf4689292fe554691db9191614377"
+    "mtime": 1785578824.27211,
+    "ast_hash": "11dd6880a0a6d4dcde33929a39b6c950",
+    "semantic_hash": "11dd6880a0a6d4dcde33929a39b6c950"
   },
   "insta-web-analytics/src/js/analytics/messages.js": {
     "mtime": 1785509262.519638,
@@ -70,19 +60,19 @@
     "semantic_hash": "4f5e635728647813f9ee7f00371ce958"
   },
   "insta-web-analytics/src/js/analytics/passport.js": {
-    "mtime": 1785571928.0781033,
-    "ast_hash": "a5a1c619f28dd54bbc2a61cd1817cb31",
-    "semantic_hash": "a5a1c619f28dd54bbc2a61cd1817cb31"
+    "mtime": 1785578824.27211,
+    "ast_hash": "558d29c6f2eea2c2a31b8467486ee984",
+    "semantic_hash": "558d29c6f2eea2c2a31b8467486ee984"
   },
   "insta-web-analytics/src/js/analytics/privacy.js": {
-    "mtime": 1785535310.257655,
-    "ast_hash": "c4e32556c102e7117c900d497c9bcfd0",
-    "semantic_hash": "c4e32556c102e7117c900d497c9bcfd0"
+    "mtime": 1785578824.2731123,
+    "ast_hash": "77887fef2541181191ccec1af4e56bfa",
+    "semantic_hash": "77887fef2541181191ccec1af4e56bfa"
   },
   "insta-web-analytics/src/js/analytics/summary.js": {
-    "mtime": 1785571884.7861803,
-    "ast_hash": "3c9699f81b78169ff121b974bf223abb",
-    "semantic_hash": "3c9699f81b78169ff121b974bf223abb"
+    "mtime": 1785578824.2731123,
+    "ast_hash": "6057edb69455637862d096a361c4ce09",
+    "semantic_hash": "6057edb69455637862d096a361c4ce09"
   },
   "insta-web-analytics/src/js/analytics/trends.js": {
     "mtime": 1785530935.1973934,
@@ -90,24 +80,24 @@
     "semantic_hash": "7ddce15a0c55504e1ad81b2781f80343"
   },
   "insta-web-analytics/src/js/analytics/util.js": {
-    "mtime": 1785509170.5388484,
-    "ast_hash": "b3f22b91f8c70e9686db7a69d6014d47",
-    "semantic_hash": "b3f22b91f8c70e9686db7a69d6014d47"
+    "mtime": 1785578824.2741122,
+    "ast_hash": "4081c770b28f33b4f4c96cd8e99a6713",
+    "semantic_hash": "4081c770b28f33b4f4c96cd8e99a6713"
   },
   "insta-web-analytics/src/js/charts.js": {
-    "mtime": 1785572392.304254,
-    "ast_hash": "bdc9cee154fb5e8e3a23e98ab79aba41",
-    "semantic_hash": "bdc9cee154fb5e8e3a23e98ab79aba41"
+    "mtime": 1786764967.863428,
+    "ast_hash": "48d856020800f042259cc80d07895d2f",
+    "semantic_hash": "48d856020800f042259cc80d07895d2f"
   },
   "insta-web-analytics/src/js/history.js": {
-    "mtime": 1785571010.4686463,
+    "mtime": 1785578824.2751122,
     "ast_hash": "321449b565a28bc37a598446fa774bc6",
     "semantic_hash": "321449b565a28bc37a598446fa774bc6"
   },
   "insta-web-analytics/src/js/main.js": {
-    "mtime": 1785574124.6872132,
-    "ast_hash": "9f85e7c548ab1389d5d5e5935f809201",
-    "semantic_hash": "9f85e7c548ab1389d5d5e5935f809201"
+    "mtime": 1786764992.3075974,
+    "ast_hash": "8503e6104e98073affd501180786108c",
+    "semantic_hash": "8503e6104e98073affd501180786108c"
   },
   "insta-web-analytics/src/js/nav.js": {
     "mtime": 1785530736.581044,
@@ -145,22 +135,22 @@
     "semantic_hash": "e345d1bf67bb7dfb0315305aebca02db"
   },
   "insta-web-analytics/src/js/parsers/index.js": {
-    "mtime": 1785571459.4720924,
-    "ast_hash": "c78a5d52ee3ee38b54e24240122f2524",
-    "semantic_hash": "c78a5d52ee3ee38b54e24240122f2524"
+    "mtime": 1785578824.27611,
+    "ast_hash": "8b065e5e48d4e7e8820e8c8268b751e6",
+    "semantic_hash": "8b065e5e48d4e7e8820e8c8268b751e6"
   },
   "insta-web-analytics/src/js/parsers/insights.js": {
-    "mtime": 1785571434.2652662,
-    "ast_hash": "9b57a4bd1518e6a449a16a284f84839b",
-    "semantic_hash": "9b57a4bd1518e6a449a16a284f84839b"
+    "mtime": 1785578824.27611,
+    "ast_hash": "18e5de9dce3cd02e9db7115693ab6a95",
+    "semantic_hash": "18e5de9dce3cd02e9db7115693ab6a95"
   },
   "insta-web-analytics/src/js/parsers/json.js": {
-    "mtime": 1785571010.4926515,
+    "mtime": 1785578824.2772143,
     "ast_hash": "2f0cac812deb1a80a61d55d65dab4596",
     "semantic_hash": "2f0cac812deb1a80a61d55d65dab4596"
   },
   "insta-web-analytics/src/js/parsers/messages.js": {
-    "mtime": 1785571010.4926515,
+    "mtime": 1785578824.2772143,
     "ast_hash": "e0dc24ca848268dd4c84861feb105561",
     "semantic_hash": "e0dc24ca848268dd4c84861feb105561"
   },
@@ -180,9 +170,9 @@
     "semantic_hash": "27828c93f71fb076ae575ccb981d9053"
   },
   "insta-web-analytics/src/js/ui.js": {
-    "mtime": 1785532976.5606103,
-    "ast_hash": "a20fb0bec9bc5d0c279e5f543b237b9e",
-    "semantic_hash": "a20fb0bec9bc5d0c279e5f543b237b9e"
+    "mtime": 1786764992.3066216,
+    "ast_hash": "260237e72600fa887b327735ac66fc6f",
+    "semantic_hash": "260237e72600fa887b327735ac66fc6f"
   },
   "insta-web-analytics/src/js/unzip.js": {
     "mtime": 1785530657.5170982,
@@ -190,19 +180,19 @@
     "semantic_hash": "6ff6badb1a766e274b81f6026328da4c"
   },
   "insta-web-analytics/src/js/views.js": {
-    "mtime": 1785572025.956085,
-    "ast_hash": "dec8ae10d297dad3917f0107ccbe4550",
-    "semantic_hash": "dec8ae10d297dad3917f0107ccbe4550"
+    "mtime": 1785578824.278215,
+    "ast_hash": "9f05571b745a45f236b39171fc0b7e5d",
+    "semantic_hash": "9f05571b745a45f236b39171fc0b7e5d"
   },
   "insta-web-analytics/src/js/worker.js": {
-    "mtime": 1785571935.9537444,
-    "ast_hash": "832083eb358088296ffb092ed77b4a37",
-    "semantic_hash": "832083eb358088296ffb092ed77b4a37"
+    "mtime": 1785578824.2797184,
+    "ast_hash": "06d0584eeb84ec237a63540fefd1fe74",
+    "semantic_hash": "06d0584eeb84ec237a63540fefd1fe74"
   },
   "insta-web-analytics/src/sw.js": {
-    "mtime": 1785572056.1407764,
-    "ast_hash": "f94a7eb02545f40ac43142f216ce0058",
-    "semantic_hash": "f94a7eb02545f40ac43142f216ce0058"
+    "mtime": 1785578824.280233,
+    "ast_hash": "818abc4969ca642f27ba1aeb74fd12cf",
+    "semantic_hash": "818abc4969ca642f27ba1aeb74fd12cf"
   },
   "insta-web-analytics/tools/lint-imports.mjs": {
     "mtime": 1785511159.413901,
@@ -215,9 +205,9 @@
     "semantic_hash": "e2f122578dc52c0d3c5df225bea81903"
   },
   "insta-web-analytics/tools/make-fixture.mjs": {
-    "mtime": 1785571552.3752062,
-    "ast_hash": "5813fae4287cc3b1bd142aa604698816",
-    "semantic_hash": "5813fae4287cc3b1bd142aa604698816"
+    "mtime": 1785578824.281304,
+    "ast_hash": "47fa6f20c639c498a1a5118736d81ff0",
+    "semantic_hash": "47fa6f20c639c498a1a5118736d81ff0"
   },
   "insta-web-analytics/tools/make-prior-history.mjs": {
     "mtime": 1785510900.83881,
@@ -245,29 +235,19 @@
     "semantic_hash": "7f69a2964497c0cee845942bedb1574d"
   },
   "insta-web-analytics/tools/test-bundle.mjs": {
-    "mtime": 1785531483.3298512,
-    "ast_hash": "ce385efcee4817ef04eecf633a5a72c6",
-    "semantic_hash": "ce385efcee4817ef04eecf633a5a72c6"
+    "mtime": 1785578824.281848,
+    "ast_hash": "872f11dcbab365fbe3819bbbd3bacf64",
+    "semantic_hash": "872f11dcbab365fbe3819bbbd3bacf64"
   },
   "insta-web-analytics/tools/verify.mjs": {
-    "mtime": 1785572131.091824,
-    "ast_hash": "a574a56d8e5bcfe797ee83f1b8aebba3",
-    "semantic_hash": "a574a56d8e5bcfe797ee83f1b8aebba3"
-  },
-  "main.py": {
-    "mtime": 1780817425.1660213,
-    "ast_hash": "6f47ff83ed3b88a000969502ea94b4f6",
-    "semantic_hash": "6f47ff83ed3b88a000969502ea94b4f6"
-  },
-  "scraper.py": {
-    "mtime": 1780775328.2279487,
-    "ast_hash": "9722ca03c457f77e658b8c5fbebd30ab",
-    "semantic_hash": "9722ca03c457f77e658b8c5fbebd30ab"
+    "mtime": 1785578824.282386,
+    "ast_hash": "51e418fe1d52254b85b4b9c97ba15153",
+    "semantic_hash": "51e418fe1d52254b85b4b9c97ba15153"
   },
   "README.md": {
-    "mtime": 1785510868.9572806,
-    "ast_hash": "0daa41394a8422013e167098a2e25772",
-    "semantic_hash": "0daa41394a8422013e167098a2e25772"
+    "mtime": 1788110381.579524,
+    "ast_hash": "00f225ec559c82c075d12197c5a9d9f7",
+    "semantic_hash": "00f225ec559c82c075d12197c5a9d9f7"
   },
   "insta-web-analytics/README.md": {
     "mtime": 1785510836.0993443,
@@ -275,16 +255,36 @@
     "semantic_hash": "914574d7514842f26028e4982c318c0b"
   },
   "insta-web-analytics/src/index.html": {
-    "mtime": 1785574147.8362136,
-    "ast_hash": "ae3c9ef738b3b7d72b512220b7467294",
-    "semantic_hash": "ae3c9ef738b3b7d72b512220b7467294"
+    "mtime": 1785578824.2701128,
+    "ast_hash": "d9ceb5d4248833c132346147bddea8f5",
+    "semantic_hash": "d9ceb5d4248833c132346147bddea8f5"
   },
-  "requirements.txt": {
+  "insta-desktop-analytics/analytics.py": {
+    "mtime": 1780775328.224946,
+    "ast_hash": "7dbdd19ba37f893d6ac59e8cc5934f79",
+    "semantic_hash": "7dbdd19ba37f893d6ac59e8cc5934f79"
+  },
+  "insta-desktop-analytics/db.py": {
+    "mtime": 1780775328.2259493,
+    "ast_hash": "38acb084d09ea5d308a02290395fcd86",
+    "semantic_hash": "38acb084d09ea5d308a02290395fcd86"
+  },
+  "insta-desktop-analytics/main.py": {
+    "mtime": 1780817425.1660213,
+    "ast_hash": "6f47ff83ed3b88a000969502ea94b4f6",
+    "semantic_hash": "6f47ff83ed3b88a000969502ea94b4f6"
+  },
+  "insta-desktop-analytics/scraper.py": {
+    "mtime": 1780775328.2279487,
+    "ast_hash": "9722ca03c457f77e658b8c5fbebd30ab",
+    "semantic_hash": "9722ca03c457f77e658b8c5fbebd30ab"
+  },
+  "insta-desktop-analytics/requirements.txt": {
     "mtime": 1780775328.2279487,
     "ast_hash": "03a27b0abb1027bbd7837d89fbd3032f",
     "semantic_hash": "03a27b0abb1027bbd7837d89fbd3032f"
   },
-  "app_icon.png": {
+  "insta-desktop-analytics/app_icon.png": {
     "mtime": 1780775328.224946,
     "ast_hash": "ffd65e15404fd55a2d85acfa07508533",
     "semantic_hash": "ffd65e15404fd55a2d85acfa07508533"

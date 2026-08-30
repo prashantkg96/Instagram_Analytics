@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app_icon.png" alt="Instagram Analytics" width="120">
+  <img src="insta-desktop-analytics/app_icon.png" alt="Instagram Analytics" width="120">
 </p>
 
 <h1 align="center">Instagram Analytics</h1>
@@ -21,7 +21,7 @@
 
 They answer different questions from different data sources. Pick by what you need.
 
-| | [`insta-web-analytics/`](insta-web-analytics/) | this desktop app |
+| | [`insta-web-analytics/`](insta-web-analytics/) | [`insta-desktop-analytics/`](insta-desktop-analytics/) |
 |---|---|---|
 | **Data source** | your official Instagram data export (ZIP) | Instagram's private API via `instagrapi` |
 | **Credentials needed** | none | username + password |
@@ -108,6 +108,7 @@ If you prefer not to save your password locally, simply leave the **"Save"** che
 ### 1. Install dependencies
 
 ```bash
+cd insta-desktop-analytics
 pip install -r requirements.txt
 ```
 
@@ -147,19 +148,20 @@ Enter your Instagram username and password, then click **🔑 Login** or **▶ S
 
 ```
 Instagram_Analytics/
-├── main.py           # GUI application (Tkinter)
-├── scraper.py        # Instagram API layer (instagrapi)
-├── analytics.py      # Analytics & report computation
-├── db.py             # SQLite storage layer
-├── requirements.txt  # Python dependencies
-├── app_icon.png      # App icon
-└── UserData/         # Local data (gitignored)
-    ├── saved_accounts.json
-    └── {username}/
-        ├── ig_session.json
-        ├── data/
-        │   └── {username}.db
-        └── profile_photos/
+└── insta-desktop-analytics/
+    ├── main.py           # GUI application (Tkinter)
+    ├── scraper.py        # Instagram API layer (instagrapi)
+    ├── analytics.py      # Analytics & report computation
+    ├── db.py             # SQLite storage layer
+    ├── requirements.txt  # Python dependencies
+    ├── app_icon.png      # App icon
+    └── UserData/         # Local data (gitignored)
+        ├── saved_accounts.json
+        └── {username}/
+            ├── ig_session.json
+            ├── data/
+            │   └── {username}.db
+            └── profile_photos/
 ```
 
 ---
